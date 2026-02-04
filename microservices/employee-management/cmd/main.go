@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 
 	"employee-management/internal/config"
 	"employee-management/internal/db"
@@ -22,10 +23,28 @@ func main() {
 	service := service.NewEmployeeService(repo)
 	handler := handlers.NewEmployeeHandler(service)
 
-	router := gin.Default()
+	router := gin.New()
+	// Middleware
+	router.Use(gin.Logger())
+	router.Use(gin.Recovery())
 
+	// Global handlers for unsupported routes/methods (Challenge 1)
+	router.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "resource not found",
+		})
+	})
+
+	router.NoMethod(func(c *gin.Context) {
+		c.JSON(http.StatusMethodNotAllowed, gin.H{
+			"error": "method not allowed",
+		})
+	})
+
+	// Routes
 	router.GET("/health", handlers.HealthCheck)
 	router.POST("/employees", handler.CreateEmployee)
+	router.GET("/employees/:id", handler.GetEmployeeByID)
 
 	log.Printf("Employee service running on :%s", cfg.ServerPort)
 	router.Run(":" + cfg.ServerPort)
