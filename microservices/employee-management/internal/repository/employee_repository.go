@@ -1,4 +1,4 @@
-// Package repository defines data acces layer interfaces and implementations
+// Package repository defines data access layer interfaces and implementations
 package repository
 
 import (
