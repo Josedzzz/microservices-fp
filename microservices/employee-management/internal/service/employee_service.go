@@ -28,7 +28,7 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 }
 
 // FindByID retrieves an employee by id
-func (s *EmployeeService) FindByID(ctx context.Context, id string) (*models.Employee, error) {
+func (s *EmployeeService) FindByID(ctx context.Context, id int64) (*models.Employee, error) {
 	return s.repo.FindByID(ctx, id)
 }
 
