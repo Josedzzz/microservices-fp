@@ -1,11 +1,18 @@
 // Package handlers contains HTTP request handlers for the API endpoints
+
+// HAVE IN MIND:
+// 1. If validation grows, move it into a helper function.
 package handlers
 
 import (
 	"net/http"
+	"errors"
+	"strconv"
 
+	"employee-management/internal/repository"
 	"employee-management/internal/models"
 	"employee-management/internal/service"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,22 +29,67 @@ func NewEmployeeHandler(s *service.EmployeeService) *EmployeeHandler {
 // CreateEmployee handles POST requests to create a new employee
 // Validates the request body and delegates to the service layer
 //
-// Success: Returns 201 Created with the created employee
+// Success: Returns 200 OK with the created employee
 // Error: Returns 400 Bad Request for invalid input or 500 Internal Server Error
 func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 	var req models.Employee
 
+	// Check JSON shape / types
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Input validation
+    if req.Email == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "email is required"})
+        return
+    }
+
+    if req.EmployeeNumber == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "employee number is required"})
+        return
+    }
+
+	// Business logic
 	if err := h.service.Create(c.Request.Context(), &req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		switch {
+		case errors.Is(err, repository.ErrEmailAlreadyExists),
+			 errors.Is(err, repository.ErrEmployeeNumberAlreadyExists):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
 	}
 
-	c.JSON(http.StatusCreated, req)
+	c.JSON(http.StatusOK, req)
+}
+
+
+func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
+    idParam := c.Param("id")
+
+    id, err := strconv.ParseInt(idParam, 10, 64)
+    if err != nil || id <= 0 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "invalid employee id"})
+        return
+    }
+
+    emp, err := h.service.FindByID(c.Request.Context(), id)
+    if err != nil {
+        switch {
+        case errors.Is(err, repository.ErrEmployeeNotFound):
+            c.JSON(http.StatusNotFound, gin.H{"error": "employee with id " + idParam + " does not exist"})
+            return
+        default:
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+            return
+        }
+    }
+
+    c.JSON(http.StatusOK, emp)
 }
 
 // HealthCheck handles GET /health
