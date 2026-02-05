@@ -24,9 +24,7 @@ type Config struct {
 // Load gets the config from env variables
 // Exits if DATABASE_URL is not set
 func Load() *Config {
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment variables")
-	}
+	_ = godotenv.Load()
 
 	cfg := &Config{
 		ServerPort: getEnv("SERVER_PORT", "8081"),
