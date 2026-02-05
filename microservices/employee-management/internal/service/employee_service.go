@@ -46,4 +46,3 @@ func (s *EmployeeService) Update(ctx context.Context, e *models.Employee) error 
 func (s *EmployeeService) Delete(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
 }
-
