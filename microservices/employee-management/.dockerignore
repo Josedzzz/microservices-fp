@@ -1,0 +1,21 @@
+# GIT
+.git
+.gitignore
+
+# Local environment
+.env
+
+# Editor / OS files
+.DS_Store
+*.swp
+*.swo
+.idea
+.vscode
+
+# Build artifacts
+bin/
+dist/
+
+# Test and coverage output
+*.out
+coverage/
