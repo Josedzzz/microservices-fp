@@ -15,7 +15,7 @@ const (
 // Employee represents an employee record in the system
 // All fields are tagged for JSON serialization
 type Employee struct {
-	ID             int64         `json:"id"`
+	ID             int64          `json:"id"`
 	FirstName      string         `json:"firstName"`
 	LastName       string         `json:"lastName"`
 	Email          string         `json:"email"`
