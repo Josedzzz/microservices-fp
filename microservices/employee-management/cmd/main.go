@@ -31,7 +31,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	dbPool := db.NewPostgresPool(cfg.DBUrl)
+	dbPool := db.NewPostgresPool(cfg.DatabaseURL())
 	defer dbPool.Close()
 
 	repo := repository.NewEmployeeRepository(dbPool)
