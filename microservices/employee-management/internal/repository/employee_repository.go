@@ -19,7 +19,7 @@ type EmployeeRepository interface {
 	FindByID(ctx context.Context, id int64) (*models.Employee, error)
 	FindAll(ctx context.Context) ([]models.Employee, error)
 	Update(ctx context.Context, e *models.Employee) error
-	Delete(ctx context.Context, id string) error
+	Delete(ctx context.Context, id int64) error
 }
 
 // employeeRepository is the postgresql implementation of EmployeeRepository
@@ -121,7 +121,17 @@ func (r *employeeRepository) FindAll(ctx context.Context) ([]models.Employee, er
 
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
-		return nil, err
+		// Check for specific PostgreSQL errors
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "42P01": // undefined_table
+				return nil, fmt.Errorf("employees table does not exist: %w", err)
+			case "42501": // insufficient_privilege
+				return nil, fmt.Errorf("insufficient privileges to access employees: %w", err)
+			}
+		}
+		return nil, fmt.Errorf("failed to query employees: %w", err)
 	}
 	defer rows.Close()
 
@@ -142,11 +152,18 @@ func (r *employeeRepository) FindAll(ctx context.Context) ([]models.Employee, er
 			&emp.UpdatedAt,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan employee row: %w", err)
 		}
 		employees = append(employees, emp)
 	}
 
+	// Check for any iteration errors
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating employee rows: %w", err)
+	}
+
+	// Returning empty slice (not nil) for no employees is intentional
+	// This makes it easier for callers (no nil check needed)
 	return employees, nil
 }
 
@@ -161,7 +178,7 @@ func (r *employeeRepository) Update(ctx context.Context, e *models.Employee) err
         RETURNING updated_at
     `
 
-	return r.db.QueryRow(ctx, query,
+	result, err := r.db.Exec(ctx, query,
 		e.ID,
 		e.FirstName,
 		e.LastName,
@@ -170,19 +187,50 @@ func (r *employeeRepository) Update(ctx context.Context, e *models.Employee) err
 		e.Position,
 		e.Department,
 		e.Status,
-	).Scan(&e.UpdatedAt)
-}
+	)
 
-// Delete removes an employee from the db by id
-func (r *employeeRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM employee.employees WHERE id = $1`
-	result, err := r.db.Exec(ctx, query, id)
 	if err != nil {
-		return err
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch {
+			case pgErr.Code == "23505" && pgErr.ConstraintName == "employees_email_key":
+				return ErrEmailAlreadyExists
+			case pgErr.Code == "23505" && pgErr.ConstraintName == "employees_employee_number_key":
+				return ErrEmployeeNumberAlreadyExists
+			}
+		}
+		return fmt.Errorf("failed to update employee: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
-		return fmt.Errorf("employee not found")
+		return ErrEmployeeNotFound
+	}
+
+	// Get updated_at if needed
+	err = r.db.QueryRow(ctx, "SELECT updated_at FROM employee.employees WHERE id = $1", e.ID).Scan(&e.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to get updated timestamp: %w", err)
+	}
+
+	return nil
+}
+
+// Delete removes an employee from the db by id
+func (r *employeeRepository) Delete(ctx context.Context, id int64) error {
+	query := `DELETE FROM employee.employees WHERE id = $1`
+	result, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23503" { // foreign_key_violation
+				return fmt.Errorf("employee has related records and cannot be deleted: %w", err)
+			}
+		}
+		return fmt.Errorf("failed to delete employee: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrEmployeeNotFound
 	}
 
 	return nil
