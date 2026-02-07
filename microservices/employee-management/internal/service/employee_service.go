@@ -43,6 +43,6 @@ func (s *EmployeeService) Update(ctx context.Context, e *models.Employee) error 
 }
 
 // Delete removes an employee
-func (s *EmployeeService) Delete(ctx context.Context, id string) error {
+func (s *EmployeeService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }

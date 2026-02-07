@@ -197,8 +197,7 @@ func (h *EmployeeHandler) DeleteEmployee(c *gin.Context) {
 
 	if err := h.service.Delete(
 		c.Request.Context(),
-		strconv.FormatInt(id, 10),
-	); err != nil {
+		id); err != nil {
 		switch {
 		case errors.Is(err, repository.ErrEmployeeNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "employee with id " + idParam + " does not exist"})
