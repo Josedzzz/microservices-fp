@@ -61,17 +61,17 @@ func main() {
 	})
 
 	// Health
-	router.GET("/health", handlers.HealthCheck)
+	router.GET("employees-service/api/health", handlers.HealthCheck)
 
 	// Swagger
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Employee routes
-	router.POST("/employees", handler.CreateEmployee)
-	router.GET("/employees/:id", handler.GetEmployeeByID)
-	router.GET("/employees", handler.GetAllEmployees)
-	router.PUT("/employees/:id", handler.UpdateEmployee)
-	router.DELETE("/employees/:id", handler.DeleteEmployee)
+	router.POST("employees-service/api/employees", handler.CreateEmployee)
+	router.GET("employees-service/api/employees/:id", handler.GetEmployeeByID)
+	router.GET("employees-service/api/employees", handler.GetAllEmployees)
+	router.PUT("employees-service/api/employees/:id", handler.UpdateEmployee)
+	router.DELETE("employees-service/api/employees/:id", handler.DeleteEmployee)
 
 	log.Printf("Employee service running on :%s", cfg.ServerPort)
 	router.Run(":" + cfg.ServerPort)
