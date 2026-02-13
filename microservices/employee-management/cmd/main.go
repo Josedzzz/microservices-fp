@@ -15,9 +15,11 @@ import (
 	"log"
 	"net/http"
 
+	"employee-management/internal/api"
 	"employee-management/internal/config"
 	"employee-management/internal/db"
 	"employee-management/internal/handlers"
+	"employee-management/internal/middleware"
 	"employee-management/internal/repository"
 	"employee-management/internal/service"
 
@@ -38,41 +40,51 @@ func main() {
 	service := service.NewEmployeeService(repo)
 	handler := handlers.NewEmployeeHandler(service)
 
+	// Gin config
+	gin.SetMode(gin.ReleaseMode) // Change mode for development
 	router := gin.New()
 
 	// Trusted proxies
 	router.SetTrustedProxies([]string{"127.0.0.1"})
 
 	// Middleware
+	router.Use(middleware.Recovery())
+	router.Use(middleware.ErrorHandler())
 	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
+	router.Use(gin.Recovery()) // Recovery fallback
 
 	// Global handlers
 	router.NoRoute(func(c *gin.Context) {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "resource not found",
-		})
+		api.NotFound(c, "Resource not found")
 	})
 
 	router.NoMethod(func(c *gin.Context) {
-		c.JSON(http.StatusMethodNotAllowed, gin.H{
-			"error": "method not allowed",
-		})
+		api.Error(c, http.StatusMethodNotAllowed, "Method not allowed")
 	})
 
-	// Health
-	router.GET("employees-service/api/health", handlers.HealthCheck)
+	apiGroup := router.Group("/employees-service/api")
+	{
+		// Health
+		apiGroup.GET("/health", handlers.HealthCheck)
 
-	// Swagger
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		// Swagger
+		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// Employee routes
-	router.POST("employees-service/api/employees", handler.CreateEmployee)
-	router.GET("employees-service/api/employees/:id", handler.GetEmployeeByID)
-	router.GET("employees-service/api/employees", handler.GetAllEmployees)
-	router.PUT("employees-service/api/employees/:id", handler.UpdateEmployee)
-	router.DELETE("employees-service/api/employees/:id", handler.DeleteEmployee)
+		// Employee routes
+		employees := apiGroup.Group("/employees")
+		{
+			employees.POST("/", handler.CreateEmployee)
+			employees.GET("/:id", handler.GetEmployeeByID)
+			employees.GET("/", handler.GetAllEmployees)
+			employees.PUT("/:id", handler.UpdateEmployee)
+			employees.DELETE("/:id", handler.DeleteEmployee)
+		}
+	}
 
 	log.Printf("Employee service running on :%s", cfg.ServerPort)
-	router.Run(":" + cfg.ServerPort)
+	log.Printf("Swagger UI available at http://localhost:%s/swagger/index.html", cfg.ServerPort)
+
+	if err := router.Run(":" + cfg.ServerPort); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }

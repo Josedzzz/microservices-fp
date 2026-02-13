@@ -4,11 +4,13 @@ package handlers
 import (
 	"errors"
 	"net/http"
-	"strconv"
+	"time"
 
+	"employee-management/internal/api"
 	"employee-management/internal/models"
 	"employee-management/internal/repository"
 	"employee-management/internal/service"
+	"employee-management/internal/validator"
 
 	"github.com/gin-gonic/gin"
 )
@@ -43,35 +45,31 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 
 	// Check JSON shape / types
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		api.BadRequest(c, "Invalid JSON format")
 		return
 	}
 
 	// Input validation
-	if req.Email == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "email is required"})
-		return
-	}
+	validation := validator.ValidateEmployee(req.Email, req.EmployeeNumber, req.FirstName, req.LastName)
 
-	if req.EmployeeNumber == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "employee number is required"})
+	if !validation.IsValid {
+		api.ValidationError(c, http.StatusBadRequest, "Validation failed", validation.Errors)
 		return
 	}
 
 	// Business logic
 	if err := h.service.Create(c.Request.Context(), &req); err != nil {
 		switch {
-		case errors.Is(err, repository.ErrEmailAlreadyExists),
-			errors.Is(err, repository.ErrEmployeeNumberAlreadyExists):
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
+		case errors.Is(err, repository.ErrEmailAlreadyExists):
+			api.Conflict(c, "Email already exist")
+		case errors.Is(err, repository.ErrEmployeeNumberAlreadyExists):
+			api.Conflict(c, "Employee number already exists")
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			return
+			api.InternalServerError(c, "Failed to create employee")
 		}
 	}
 
-	c.JSON(http.StatusOK, req)
+	c.JSON(http.StatusCreated, req)
 }
 
 // GetEmployeeByID godoc
@@ -88,9 +86,9 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 	idParam := c.Param("id")
 
-	id, err := strconv.ParseInt(idParam, 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid employee id"})
+	id, errs := validator.ValidateID(idParam)
+	if errs != nil {
+		api.ValidationError(c, http.StatusBadRequest, "Invalid ID", errs)
 		return
 	}
 
@@ -98,12 +96,11 @@ func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrEmployeeNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": "employee with id " + idParam + " does not exist"})
-			return
+			api.NotFound(c, "Employee not found")
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			return
+			api.InternalServerError(c, "Failed to retrieve employee")
 		}
+		return
 	}
 
 	c.JSON(http.StatusOK, emp)
@@ -120,8 +117,12 @@ func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 	employees, err := h.service.FindAll(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		api.InternalServerError(c, "Failed to retrieve employees")
 		return
+	}
+
+	if employees == nil {
+		employees = []models.Employee{} // Return empty array instead of null
 	}
 
 	c.JSON(http.StatusOK, employees)
@@ -144,33 +145,44 @@ func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 	idParam := c.Param("id")
 
-	id, err := strconv.ParseInt(idParam, 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid employee id"})
+	id, errs := validator.ValidateID(idParam)
+	if errs != nil {
+		api.ValidationError(c, http.StatusBadRequest, "Invalid ID", errs)
 		return
 	}
 
 	var req models.Employee
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		api.BadRequest(c, "Invalid JSON format")
 		return
 	}
 
 	req.ID = id
 
+	validation := validator.ValidateEmployee(
+		req.Email,
+		req.EmployeeNumber,
+		req.FirstName,
+		req.LastName,
+	)
+
+	if !validation.IsValid {
+		api.ValidationError(c, http.StatusBadRequest, "Validation failed", validation.Errors)
+		return
+	}
+
 	if err := h.service.Update(c.Request.Context(), &req); err != nil {
 		switch {
 		case errors.Is(err, repository.ErrEmployeeNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": "employee with id " + idParam + " does not exist"})
-			return
-		case errors.Is(err, repository.ErrEmailAlreadyExists),
-			errors.Is(err, repository.ErrEmployeeNumberAlreadyExists):
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
+			api.NotFound(c, "Employee not found")
+		case errors.Is(err, repository.ErrEmailAlreadyExists):
+			api.Conflict(c, "Email already exists")
+		case errors.Is(err, repository.ErrEmployeeNumberAlreadyExists):
+			api.Conflict(c, "Employee number already exists")
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			return
+			api.InternalServerError(c, "Failed to update employee")
 		}
+		return
 	}
 
 	c.JSON(http.StatusOK, req)
@@ -189,23 +201,20 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 func (h *EmployeeHandler) DeleteEmployee(c *gin.Context) {
 	idParam := c.Param("id")
 
-	id, err := strconv.ParseInt(idParam, 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid employee id"})
+	id, errs := validator.ValidateID(idParam)
+	if errs != nil {
+		api.ValidationError(c, http.StatusBadRequest, "Invalid ID", errs)
 		return
 	}
 
-	if err := h.service.Delete(
-		c.Request.Context(),
-		id); err != nil {
+	if err := h.service.Delete(c.Request.Context(), id); err != nil {
 		switch {
 		case errors.Is(err, repository.ErrEmployeeNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": "employee with id " + idParam + " does not exist"})
-			return
+			api.NotFound(c, "Employee not found")
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			return
+			api.InternalServerError(c, "Failed to delete employee")
 		}
+		return
 	}
 
 	c.Status(http.StatusNoContent)
@@ -214,7 +223,8 @@ func (h *EmployeeHandler) DeleteEmployee(c *gin.Context) {
 // HealthCheck handles GET /health
 func HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "UP",
-		"service": "employee-management",
+		"status":    "UP",
+		"service":   "employee-management",
+		"timestamp": time.Now().UTC(),
 	})
 }
