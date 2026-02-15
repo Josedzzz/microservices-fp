@@ -33,6 +33,11 @@ This service is responsible for managing employee data.
 Swagger available at:
 http://localhost:8081/swagger/index.html
 
-## Run locally
+## Run locally using go
 
 go run cmd/main.go
+
+# Run locally using docker
+
+docker build -t employee-management .
+docker run --env-file .env -p 8081:8081 employee-management
