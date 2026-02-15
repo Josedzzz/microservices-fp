@@ -1,15 +1,15 @@
 package main
 
-// @title Employee Management API
-// @version 1.0
-// @description API for managing employees
-// @termsOfService http://swagger.io/terms/
+//	@title			Employee Management API
+//	@version		1.0
+//	@description	API for managing employees
+//	@termsOfService	http://swagger.io/terms/
 
-// @contact.name API Support
-// @contact.email support@company.com
+//	@contact.name	API Support
+//	@contact.email	support@company.com
 
-// @host localhost:8081
-// @BasePath /
+//	@host		localhost:8081
+//	@BasePath	/
 
 import (
 	"log"

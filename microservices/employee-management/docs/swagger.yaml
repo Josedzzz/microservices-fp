@@ -1,6 +1,33 @@
 basePath: /
 definitions:
-  models.Employee:
+  employee-management_internal_api.ErrorDetail:
+    properties:
+      field:
+        type: string
+      message:
+        type: string
+      rejectedValue:
+        type: string
+    type: object
+  employee-management_internal_api.ErrorResponse:
+    description: Standard error response structure
+    properties:
+      error:
+        type: string
+      errors:
+        items:
+          $ref: '#/definitions/employee-management_internal_api.ErrorDetail'
+        type: array
+      message:
+        type: string
+      path:
+        type: string
+      status:
+        type: integer
+      timestamp:
+        type: string
+    type: object
+  employee-management_internal_models.Employee:
     properties:
       createdAt:
         type: string
@@ -21,11 +48,11 @@ definitions:
       position:
         type: string
       status:
-        $ref: '#/definitions/models.EmployeeStatus'
+        $ref: '#/definitions/employee-management_internal_models.EmployeeStatus'
       updatedAt:
         type: string
     type: object
-  models.EmployeeStatus:
+  employee-management_internal_models.EmployeeStatus:
     enum:
     - ACTIVE
     - ON_VACATION
@@ -52,17 +79,15 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: List of employees
           schema:
             items:
-              $ref: '#/definitions/models.Employee'
+              $ref: '#/definitions/employee-management_internal_models.Employee'
             type: array
         "500":
-          description: Internal Server Error
+          description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
       summary: Get all employees
       tags:
       - Employees
@@ -76,32 +101,26 @@ paths:
         name: employee
         required: true
         schema:
-          $ref: '#/definitions/models.Employee'
+          $ref: '#/definitions/employee-management_internal_models.Employee'
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Employee created successfully
           schema:
-            $ref: '#/definitions/models.Employee'
+            $ref: '#/definitions/employee-management_internal_models.Employee'
         "400":
-          description: Bad Request
+          description: Invalid JSON format or validation failed
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
         "409":
-          description: Conflict
+          description: Email or employee number already exists
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
       summary: Create a new employee
       tags:
       - Employees
@@ -116,25 +135,19 @@ paths:
         type: integer
       responses:
         "204":
-          description: Employee deleted successfully
+          description: Employee deleted successfully (no content)
         "400":
-          description: Bad Request
+          description: Invalid ID format
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
         "404":
-          description: Not Found
+          description: Employee not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
       summary: Delete employee
       tags:
       - Employees
@@ -150,27 +163,21 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Employee found
           schema:
-            $ref: '#/definitions/models.Employee'
+            $ref: '#/definitions/employee-management_internal_models.Employee'
         "400":
-          description: Bad Request
+          description: Invalid ID format
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
         "404":
-          description: Not Found
+          description: Employee not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
       summary: Get employee by ID
       tags:
       - Employees
@@ -189,36 +196,30 @@ paths:
         name: employee
         required: true
         schema:
-          $ref: '#/definitions/models.Employee'
+          $ref: '#/definitions/employee-management_internal_models.Employee'
       produces:
       - application/json
       responses:
-        "204":
+        "200":
           description: Employee updated successfully
+          schema:
+            $ref: '#/definitions/employee-management_internal_models.Employee'
         "400":
-          description: Bad Request
+          description: Invalid JSON format or validation failed
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
         "404":
-          description: Not Found
+          description: Employee not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
         "409":
-          description: Conflict
+          description: Email or employee number already exists
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
       summary: Update employee
       tags:
       - Employees

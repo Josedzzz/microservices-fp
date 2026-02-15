@@ -15,9 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// HAVE IN MIND:
-// 1. If validation grows, move it into a helper function.
-
 // EmployeeHandler handles HTTP requests for employee operations
 type EmployeeHandler struct {
 	service *service.EmployeeService // Bussiness logic dependency
@@ -29,17 +26,18 @@ func NewEmployeeHandler(s *service.EmployeeService) *EmployeeHandler {
 }
 
 // CreateEmployee godoc
-// @Summary Create a new employee
-// @Description Creates a new employee in the system
-// @Tags Employees
-// @Accept json
-// @Produce json
-// @Param employee body models.Employee true "Employee data"
-// @Success 200 {object} models.Employee
-// @Failure 400 {object} map[string]string
-// @Failure 409 {object} map[string]string
-// @Failure 500 {object} map[string]string
-// @Router /employees [post]
+//
+//	@Summary		Create a new employee
+//	@Description	Creates a new employee in the system
+//	@Tags			Employees
+//	@Accept			json
+//	@Produce		json
+//	@Param			employee	body		models.Employee		true	"Employee data"
+//	@Success		201			{object}	models.Employee		"Employee created successfully"
+//	@Failure		400			{object}	api.ErrorResponse	"Invalid JSON format or validation failed"
+//	@Failure		409			{object}	api.ErrorResponse	"Email or employee number already exists"
+//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Router			/employees [post]
 func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 	var req models.Employee
 
@@ -73,16 +71,17 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 }
 
 // GetEmployeeByID godoc
-// @Summary Get employee by ID
-// @Description Retrieves an employee by its ID
-// @Tags Employees
-// @Produce json
-// @Param id path int true "Employee ID"
-// @Success 200 {object} models.Employee
-// @Failure 400 {object} map[string]string
-// @Failure 404 {object} map[string]string
-// @Failure 500 {object} map[string]string
-// @Router /employees/{id} [get]
+//
+//	@Summary		Get employee by ID
+//	@Description	Retrieves an employee by its ID
+//	@Tags			Employees
+//	@Produce		json
+//	@Param			id	path		int					true	"Employee ID"
+//	@Success		200	{object}	models.Employee		"Employee found"
+//	@Failure		400	{object}	api.ErrorResponse	"Invalid ID format"
+//	@Failure		404	{object}	api.ErrorResponse	"Employee not found"
+//	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
+//	@Router			/employees/{id} [get]
 func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 	idParam := c.Param("id")
 
@@ -107,13 +106,14 @@ func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 }
 
 // GetAllEmployees godoc
-// @Summary Get all employees
-// @Description Retrieves all employees
-// @Tags Employees
-// @Produce json
-// @Success 200 {array} models.Employee
-// @Failure 500 {object} map[string]string
-// @Router /employees [get]
+//
+//	@Summary		Get all employees
+//	@Description	Retrieves all employees
+//	@Tags			Employees
+//	@Produce		json
+//	@Success		200	{array}		models.Employee		"List of employees"
+//	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
+//	@Router			/employees [get]
 func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 	employees, err := h.service.FindAll(c.Request.Context())
 	if err != nil {
@@ -129,19 +129,20 @@ func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 }
 
 // UpdateEmployee godoc
-// @Summary Update employee
-// @Description Updates an existing employee
-// @Tags Employees
-// @Accept json
-// @Produce json
-// @Param id path int true "Employee ID"
-// @Param employee body models.Employee true "Updated employee data"
-// @Success 204 "Employee updated successfully"
-// @Failure 400 {object} map[string]string
-// @Failure 404 {object} map[string]string
-// @Failure 409 {object} map[string]string
-// @Failure 500 {object} map[string]string
-// @Router /employees/{id} [put]
+//
+//	@Summary		Update employee
+//	@Description	Updates an existing employee
+//	@Tags			Employees
+//	@Accept			json
+//	@Produce		json
+//	@Param			id			path		int					true	"Employee ID"
+//	@Param			employee	body		models.Employee		true	"Updated employee data"
+//	@Success		200			{object}	models.Employee		"Employee updated successfully"
+//	@Failure		400			{object}	api.ErrorResponse	"Invalid JSON format or validation failed"
+//	@Failure		404			{object}	api.ErrorResponse	"Employee not found"
+//	@Failure		409			{object}	api.ErrorResponse	"Email or employee number already exists"
+//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Router			/employees/{id} [put]
 func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 	idParam := c.Param("id")
 
@@ -189,15 +190,16 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 }
 
 // DeleteEmployee godoc
-// @Summary Delete employee
-// @Description Deletes an employee by ID
-// @Tags Employees
-// @Param id path int true "Employee ID"
-// @Success 204 "Employee deleted successfully"
-// @Failure 400 {object} map[string]string
-// @Failure 404 {object} map[string]string
-// @Failure 500 {object} map[string]string
-// @Router /employees/{id} [delete]
+//
+//	@Summary		Delete employee
+//	@Description	Deletes an employee by ID
+//	@Tags			Employees
+//	@Param			id	path	int	true	"Employee ID"
+//	@Success		204	"Employee deleted successfully (no content)"
+//	@Failure		400	{object}	api.ErrorResponse	"Invalid ID format"
+//	@Failure		404	{object}	api.ErrorResponse	"Employee not found"
+//	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
+//	@Router			/employees/{id} [delete]
 func (h *EmployeeHandler) DeleteEmployee(c *gin.Context) {
 	idParam := c.Param("id")
 
