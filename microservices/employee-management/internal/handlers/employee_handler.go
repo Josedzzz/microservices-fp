@@ -65,6 +65,7 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 		default:
 			api.InternalServerError(c, "Failed to create employee")
 		}
+		return
 	}
 
 	c.JSON(http.StatusCreated, req)
