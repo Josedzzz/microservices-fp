@@ -6,10 +6,10 @@ package main
 //	@termsOfService	http://swagger.io/terms/
 
 //	@contact.name	API Support
-//	@contact.email	support@company.com
+//	@contact.email	josed.amayar@uqvirtual.edu.co
 
 //	@host		localhost:8081
-//	@BasePath	/
+//	@BasePath	/employees-service/api
 
 import (
 	"log"

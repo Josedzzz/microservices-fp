@@ -1,6 +1,6 @@
-basePath: /
+basePath: /employees-service/api
 definitions:
-  employee-management_internal_api.ErrorDetail:
+  api.ErrorDetail:
     properties:
       field:
         type: string
@@ -9,14 +9,14 @@ definitions:
       rejectedValue:
         type: string
     type: object
-  employee-management_internal_api.ErrorResponse:
+  api.ErrorResponse:
     description: Standard error response structure
     properties:
       error:
         type: string
       errors:
         items:
-          $ref: '#/definitions/employee-management_internal_api.ErrorDetail'
+          $ref: '#/definitions/api.ErrorDetail'
         type: array
       message:
         type: string
@@ -27,7 +27,26 @@ definitions:
       timestamp:
         type: string
     type: object
-  employee-management_internal_models.Employee:
+  api.PaginatedResponse:
+    properties:
+      data:
+        description: Can hold any slice ([]models.Employee to be concrete). Maybe
+          "any" can be replaced by interface{}?
+      pagination:
+        $ref: '#/definitions/api.PaginationMeta'
+    type: object
+  api.PaginationMeta:
+    properties:
+      current_page:
+        type: integer
+      page_size:
+        type: integer
+      total_pages:
+        type: integer
+      total_records:
+        type: integer
+    type: object
+  models.Employee:
     properties:
       createdAt:
         type: string
@@ -48,11 +67,11 @@ definitions:
       position:
         type: string
       status:
-        $ref: '#/definitions/employee-management_internal_models.EmployeeStatus'
+        $ref: '#/definitions/models.EmployeeStatus'
       updatedAt:
         type: string
     type: object
-  employee-management_internal_models.EmployeeStatus:
+  models.EmployeeStatus:
     enum:
     - ACTIVE
     - ON_VACATION
@@ -65,7 +84,7 @@ definitions:
 host: localhost:8081
 info:
   contact:
-    email: support@company.com
+    email: josed.amayar@uqvirtual.edu.co
     name: API Support
   description: API for managing employees
   termsOfService: http://swagger.io/terms/
@@ -74,21 +93,49 @@ info:
 paths:
   /employees:
     get:
-      description: Retrieves all employees
+      description: Retrieves employees with pagination support. Can filter by department,
+        status, position.
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Number of items per page (default: 10, max: 100)'
+        in: query
+        name: page_size
+        type: integer
+      - description: Filter by department
+        in: query
+        name: department
+        type: string
+      - description: Filter by status (ACTIVE, ON_VACATION, RETIRED)
+        in: query
+        name: status
+        type: string
+      - description: Filter by position
+        in: query
+        name: position
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: List of employees
+          description: OK
           schema:
-            items:
-              $ref: '#/definitions/employee-management_internal_models.Employee'
-            type: array
+            $ref: '#/definitions/api.PaginatedResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
-      summary: Get all employees
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get all employees with pagination and filtering
       tags:
       - Employees
     post:
@@ -101,26 +148,26 @@ paths:
         name: employee
         required: true
         schema:
-          $ref: '#/definitions/employee-management_internal_models.Employee'
+          $ref: '#/definitions/models.Employee'
       produces:
       - application/json
       responses:
         "201":
           description: Employee created successfully
           schema:
-            $ref: '#/definitions/employee-management_internal_models.Employee'
+            $ref: '#/definitions/models.Employee'
         "400":
           description: Invalid JSON format or validation failed
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
         "409":
           description: Email or employee number already exists
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
       summary: Create a new employee
       tags:
       - Employees
@@ -139,15 +186,15 @@ paths:
         "400":
           description: Invalid ID format
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
         "404":
           description: Employee not found
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
       summary: Delete employee
       tags:
       - Employees
@@ -165,19 +212,19 @@ paths:
         "200":
           description: Employee found
           schema:
-            $ref: '#/definitions/employee-management_internal_models.Employee'
+            $ref: '#/definitions/models.Employee'
         "400":
           description: Invalid ID format
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
         "404":
           description: Employee not found
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
       summary: Get employee by ID
       tags:
       - Employees
@@ -196,30 +243,30 @@ paths:
         name: employee
         required: true
         schema:
-          $ref: '#/definitions/employee-management_internal_models.Employee'
+          $ref: '#/definitions/models.Employee'
       produces:
       - application/json
       responses:
         "200":
           description: Employee updated successfully
           schema:
-            $ref: '#/definitions/employee-management_internal_models.Employee'
+            $ref: '#/definitions/models.Employee'
         "400":
           description: Invalid JSON format or validation failed
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
         "404":
           description: Employee not found
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
         "409":
           description: Email or employee number already exists
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/employee-management_internal_api.ErrorResponse'
+            $ref: '#/definitions/api.ErrorResponse'
       summary: Update employee
       tags:
       - Employees

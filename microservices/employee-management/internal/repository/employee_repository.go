@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"employee-management/internal/models"
 
@@ -17,7 +18,8 @@ import (
 type EmployeeRepository interface {
 	Create(ctx context.Context, e *models.Employee) error
 	FindByID(ctx context.Context, id int64) (*models.Employee, error)
-	FindAll(ctx context.Context) ([]models.Employee, error)
+	FindAll(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]models.Employee, error)
+	Count(ctx context.Context, filters map[string]interface{}) (int, error)
 	Update(ctx context.Context, e *models.Employee) error
 	Delete(ctx context.Context, id int64) error
 }
@@ -111,15 +113,39 @@ func (r *employeeRepository) FindByID(ctx context.Context, id int64) (*models.Em
 }
 
 // FindAll retrives all employees from the db
-func (r *employeeRepository) FindAll(ctx context.Context) ([]models.Employee, error) {
-	query := `
-        SELECT id, first_name, last_name, email, employee_number, 
-               position, department, status, hire_date, created_at, updated_at
-        FROM employee.employees
-        ORDER BY created_at DESC
-    `
+func (r *employeeRepository) FindAll(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]models.Employee, error) {
+	baseQuery := `SELECT id, first_name, last_name, email, employee_number, 
+                         position, department, status, hire_date, created_at, updated_at
+                  FROM employee.employees`
+	var conditions []string
+	var args []interface{}
+	argPos := 1
 
-	rows, err := r.db.Query(ctx, query)
+	if dept, ok := filters["department"]; ok && dept != "" {
+		conditions = append(conditions, fmt.Sprintf("department = $%d", argPos))
+		args = append(args, dept)
+		argPos++
+	}
+	if status, ok := filters["status"]; ok && status != "" {
+		conditions = append(conditions, fmt.Sprintf("status = $%d", argPos))
+		args = append(args, status)
+		argPos++
+	}
+	if pos, ok := filters["position"]; ok && pos != "" {
+		conditions = append(conditions, fmt.Sprintf("position = $%d", argPos))
+		args = append(args, pos)
+		argPos++
+	}
+
+	if len(conditions) > 0 {
+		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	baseQuery += " ORDER BY created_at DESC"
+	baseQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argPos, argPos+1)
+	args = append(args, limit, offset)
+
+	rows, err := r.db.Query(ctx, baseQuery, args...)
 	if err != nil {
 		// Check for specific PostgreSQL errors
 		var pgErr *pgconn.PgError
@@ -165,6 +191,38 @@ func (r *employeeRepository) FindAll(ctx context.Context) ([]models.Employee, er
 	// Returning empty slice (not nil) for no employees is intentional
 	// This makes it easier for callers (no nil check needed)
 	return employees, nil
+}
+
+func (r *employeeRepository) Count(ctx context.Context, filters map[string]interface{}) (int, error) {
+	baseQuery := `SELECT COUNT(*) FROM employee.employees`
+	var conditions []string
+	var args []interface{}
+	argPos := 1
+
+	// same filter logic
+	if dept, ok := filters["department"]; ok && dept != "" {
+		conditions = append(conditions, fmt.Sprintf("department = $%d", argPos))
+		args = append(args, dept)
+		argPos++
+	}
+	if status, ok := filters["status"]; ok && status != "" {
+		conditions = append(conditions, fmt.Sprintf("status = $%d", argPos))
+		args = append(args, status)
+		argPos++
+	}
+	if pos, ok := filters["position"]; ok && pos != "" {
+		conditions = append(conditions, fmt.Sprintf("position = $%d", argPos))
+		args = append(args, pos)
+		argPos++
+	}
+
+	if len(conditions) > 0 {
+		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	var count int
+	err := r.db.QueryRow(ctx, baseQuery, args...).Scan(&count)
+	return count, err
 }
 
 // Update modifies an existing employee record

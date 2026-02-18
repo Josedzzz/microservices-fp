@@ -12,7 +12,7 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "email": "support@company.com"
+            "email": "josed.amayar@uqvirtual.edu.co"
         },
         "version": "{{.Version}}"
     },
@@ -21,28 +21,69 @@ const docTemplate = `{
     "paths": {
         "/employees": {
             "get": {
-                "description": "Retrieves all employees",
+                "description": "Retrieves employees with pagination support. Can filter by department, status, position.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Employees"
                 ],
-                "summary": "Get all employees",
+                "summary": "Get all employees with pagination and filtering",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of items per page (default: 10, max: 100)",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by department",
+                        "name": "department",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (ACTIVE, ON_VACATION, RETIRED)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by position",
+                        "name": "position",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "List of employees",
+                        "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/employee-management_internal_models.Employee"
+                            "$ref": "#/definitions/api.PaginatedResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -66,7 +107,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_models.Employee"
+                            "$ref": "#/definitions/models.Employee"
                         }
                     }
                 ],
@@ -74,25 +115,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Employee created successfully",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_models.Employee"
+                            "$ref": "#/definitions/models.Employee"
                         }
                     },
                     "400": {
                         "description": "Invalid JSON format or validation failed",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Email or employee number already exists",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -121,25 +162,25 @@ const docTemplate = `{
                     "200": {
                         "description": "Employee found",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_models.Employee"
+                            "$ref": "#/definitions/models.Employee"
                         }
                     },
                     "400": {
                         "description": "Invalid ID format",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Employee not found",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -170,7 +211,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_models.Employee"
+                            "$ref": "#/definitions/models.Employee"
                         }
                     }
                 ],
@@ -178,31 +219,31 @@ const docTemplate = `{
                     "200": {
                         "description": "Employee updated successfully",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_models.Employee"
+                            "$ref": "#/definitions/models.Employee"
                         }
                     },
                     "400": {
                         "description": "Invalid JSON format or validation failed",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Employee not found",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Email or employee number already exists",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -229,19 +270,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid ID format",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Employee not found",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/employee-management_internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -249,7 +290,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "employee-management_internal_api.ErrorDetail": {
+        "api.ErrorDetail": {
             "type": "object",
             "properties": {
                 "field": {
@@ -263,7 +304,7 @@ const docTemplate = `{
                 }
             }
         },
-        "employee-management_internal_api.ErrorResponse": {
+        "api.ErrorResponse": {
             "description": "Standard error response structure",
             "type": "object",
             "properties": {
@@ -273,7 +314,7 @@ const docTemplate = `{
                 "errors": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/employee-management_internal_api.ErrorDetail"
+                        "$ref": "#/definitions/api.ErrorDetail"
                     }
                 },
                 "message": {
@@ -290,7 +331,35 @@ const docTemplate = `{
                 }
             }
         },
-        "employee-management_internal_models.Employee": {
+        "api.PaginatedResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "Can hold any slice ([]models.Employee to be concrete). Maybe \"any\" can be replaced by interface{}?"
+                },
+                "pagination": {
+                    "$ref": "#/definitions/api.PaginationMeta"
+                }
+            }
+        },
+        "api.PaginationMeta": {
+            "type": "object",
+            "properties": {
+                "current_page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
+                },
+                "total_records": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.Employee": {
             "type": "object",
             "properties": {
                 "createdAt": {
@@ -321,14 +390,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/employee-management_internal_models.EmployeeStatus"
+                    "$ref": "#/definitions/models.EmployeeStatus"
                 },
                 "updatedAt": {
                     "type": "string"
                 }
             }
         },
-        "employee-management_internal_models.EmployeeStatus": {
+        "models.EmployeeStatus": {
             "type": "string",
             "enum": [
                 "ACTIVE",
@@ -348,7 +417,7 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "localhost:8081",
-	BasePath:         "/",
+	BasePath:         "/employees-service/api",
 	Schemes:          []string{},
 	Title:            "Employee Management API",
 	Description:      "API for managing employees",

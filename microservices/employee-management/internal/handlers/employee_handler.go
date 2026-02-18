@@ -107,26 +107,67 @@ func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 }
 
 // GetAllEmployees godoc
-//
-//	@Summary		Get all employees
-//	@Description	Retrieves all employees
-//	@Tags			Employees
-//	@Produce		json
-//	@Success		200	{array}		models.Employee		"List of employees"
-//	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
-//	@Router			/employees [get]
+// @Summary Get all employees with pagination and filtering
+// @Description Retrieves employees with pagination support. Can filter by department, status, position.
+// @Tags Employees
+// @Produce json
+// @Param page query int false "Page number (default: 1)"
+// @Param page_size query int false "Number of items per page (default: 10, max: 100)"
+// @Param department query string false "Filter by department"
+// @Param status query string false "Filter by status (ACTIVE, ON_VACATION, RETIRED)"
+// @Param position query string false "Filter by position"
+// @Success 200 {object} api.PaginatedResponse
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /employees [get]
 func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
-	employees, err := h.service.FindAll(c.Request.Context())
-	if err != nil {
-		api.InternalServerError(c, "Failed to retrieve employees")
+	var query api.PaginationQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid query parameters"})
 		return
 	}
 
-	if employees == nil {
-		employees = []models.Employee{} // Return empty array instead of null
+	// Set defaults for pagination
+	if query.Page < 1 {
+		query.Page = 1
+	}
+	if query.PageSize <= 0 {
+		query.PageSize = 10
+	} else if query.PageSize > 100 {
+		query.PageSize = 100
 	}
 
-	c.JSON(http.StatusOK, employees)
+	// Build filters map
+	filters := make(map[string]interface{})
+	if query.Department != "" {
+		filters["department"] = query.Department
+	}
+	if query.Status != "" {
+		filters["status"] = query.Status
+	}
+	if query.Position != "" {
+		filters["position"] = query.Position
+	}
+
+	employees, total, err := h.service.FindAll(c.Request.Context(), query.Page, query.PageSize, filters)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	totalPages := (total + query.PageSize - 1) / query.PageSize
+
+	response := api.PaginatedResponse{
+		Data: employees,
+		Pagination: api.PaginationMeta{
+			CurrentPage:  query.Page,
+			PageSize:     query.PageSize,
+			TotalPages:   totalPages,
+			TotalRecords: total,
+		},
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // UpdateEmployee godoc
