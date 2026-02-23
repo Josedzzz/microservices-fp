@@ -1,0 +1,106 @@
+networks:
+  onboarding-network:
+    driver: bridge
+
+volumes:
+  postgres_employees_data:
+  postgres_departments_data:
+
+services:
+  # ============================================
+  # DATABASE FOR EMPLOYEES SERVICE (Go)
+  # ============================================
+  database-employees:
+    image: postgres:15-alpine
+    container_name: database-employees
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: employees_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_employees_data:/var/lib/postgresql/data
+    networks:
+      - onboarding-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d employees_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # EMPLOYEES SERVICE (Go)
+  # ============================================
+  employees-service:
+    build: ./microservices/employee-management/
+    container_name: employees-service
+    ports:
+      - "8081:8081"
+    environment:
+      # Server configuration
+      SERVER_PORT: 8081
+
+      # Database configuration - INDIVIDUAL VARIABLES (what your Go code expects)
+      DB_HOST: database-employees
+      DB_PORT: 5432
+      DB_NAME: employees_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_SSLMODE: disable
+
+      # URL for departments service
+      DEPARTMENTS_SERVICE_URL: http://departments-service:8082
+    depends_on:
+      database-employees:
+        condition: service_healthy
+
+    networks:
+      - onboarding-network
+    restart: unless-stopped
+
+  # ============================================
+  # DATABASE FOR DEPARTMENTS SERVICE (Python)
+  # ============================================
+  database-departments:
+    image: postgres:15-alpine
+    container_name: database-departments
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: departments_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_departments_data:/var/lib/postgresql/data
+    networks:
+      - onboarding-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d departments_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # DEPARTMENTS SERVICE (Python/FastAPI)
+  # ============================================
+  departments-service:
+    build: ./microservices/department-management/
+    container_name: departments-service
+    ports:
+      - "8082:8082"
+    environment:
+      # Database configuration
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: database-departments
+      DB_PORT: 5432
+      DB_NAME: departments_db
+      # Service configuration
+      SERVICE_PORT: 8082
+    depends_on:
+      database-departments:
+        condition: service_healthy
+    networks:
+      - onboarding-network
+    restart: unless-stopped
