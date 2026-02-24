@@ -11,7 +11,6 @@ RUN python -c "import uvicorn; print('Uvicorn installed successfully')"
 
 # Copy application code
 COPY ./app /app/app
-COPY .env /app/.env
 
 # Expose the port
 EXPOSE 8082

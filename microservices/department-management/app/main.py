@@ -40,9 +40,9 @@ async def root():
         "service": "Departments Service",
         "version": "1.0.0",
         "endpoints": [
-            "POST /departamentos - Create a new department",
-            "GET /departamentos/{id} - Get department by ID",
-            "GET /departamentos - List all departments"
+            "POST /departaments - Create a new department",
+            "GET /departaments/{id} - Get department by ID",
+            "GET /departaments - List all departments"
         ]
     }
 
@@ -96,7 +96,7 @@ async def get_department(
     }
 
 @app.get(
-    "/departments-service/api/departments",
+   "/departments-service/api/departments",
     response_model=List[schemas.Department],
     summary="List all departments",
     description="Retrieves a list of all departments"
