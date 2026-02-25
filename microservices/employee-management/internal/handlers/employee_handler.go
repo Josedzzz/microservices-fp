@@ -136,7 +136,7 @@ func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 	}
 
 	// Build filters map
-	filters := make(map[string]interface{})
+	filters := make(map[string]any)
 	if query.Department != "" {
 		filters["department"] = query.Department
 	}
