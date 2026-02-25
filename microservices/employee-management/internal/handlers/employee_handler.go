@@ -10,6 +10,7 @@ import (
 	"employee-management/internal/models"
 	"employee-management/internal/repository"
 	"employee-management/internal/service"
+	"employee-management/internal/validator"
 
 	"github.com/gin-gonic/gin"
 )
