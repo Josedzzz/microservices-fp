@@ -1,11 +1,10 @@
 from sqlalchemy import Column, String, Text
 from app.database import Base
-import uuid
 
 class Department(Base):
     __tablename__ = "departments"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
 
