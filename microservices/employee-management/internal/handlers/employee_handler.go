@@ -60,6 +60,9 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 			api.BadRequest(c, err.Error())
 		case errors.Is(err, repository.ErrEmailAlreadyExists):
 			api.Conflict(c, "Email already exists")
+		// TODO add ServiceUnavailable to api/
+		case errors.Is(err, service.ErrDepartmentsServiceUnavailable):
+			api.BadRequest(c, "Departments service is unavailable, please try again later")
 		default:
 			api.InternalServerError(c, "Failed to create employee")
 		}

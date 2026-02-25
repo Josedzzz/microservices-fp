@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -17,10 +18,11 @@ import (
 
 // Define service-level erros
 var (
-	ErrDepartmentRequired = errors.New("department ID is required")
-	ErrNameRequired       = errors.New("name is required")
-	ErrEmailRequired      = errors.New("email is required")
-	ErrDepartmentNotFound = errors.New("department ID does not exists")
+	ErrDepartmentRequired            = errors.New("department ID is required")
+	ErrNameRequired                  = errors.New("name is required")
+	ErrEmailRequired                 = errors.New("email is required")
+	ErrDepartmentNotFound            = errors.New("department ID does not exists")
+	ErrDepartmentsServiceUnavailable = errors.New("departments service is currently unavailable")
 )
 
 // EmployeeService handles business logic for employee operations
@@ -35,14 +37,22 @@ type EmployeeService struct {
 // NewEmployeeService creates a new instance of EmployeeService
 func NewEmployeeService(repo repository.EmployeeRepository) *EmployeeService {
 	// Circuit breaker settings
+	// TODO Clear logs
 	cbSettings := gobreaker.Settings{
 		Name:        "Departments Service",
-		MaxRequests: 3,                // Max requests allowed when half-open
-		Interval:    10 * time.Second, // Interval for clearing counts
-		Timeout:     30 * time.Second, // Time to wait before moving from open to half-open
+		MaxRequests: 3,
+		Interval:    10 * time.Second,
+		Timeout:     30 * time.Second,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
 			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-			return counts.Requests >= 5 && failureRatio >= 0.6
+			trip := counts.Requests >= 5 && failureRatio >= 0.6
+			if trip {
+				log.Printf("Circuit breaker tripped for departments service")
+			}
+			return trip
+		},
+		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+			log.Printf("Circuit breaker '%s' changed from %s to %s", name, from, to)
 		},
 	}
 
@@ -94,7 +104,7 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 	// Check if the department ID exists via HTTP call to the departments service
 	exists, err := s.checkDepartmentExistsWithRetry(ctx, e.DepartmentID)
 	if err != nil {
-		return fmt.Errorf("department validation failed after retries: %w", err)
+		return err
 	}
 	if !exists {
 		return ErrDepartmentNotFound
@@ -108,13 +118,12 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 	return s.repo.Create(ctx, e)
 }
 
-// checkDepartmentExistsWithRetry wraps the call with retries and circuit breaker
+// TODO Comment out logs
 func (s *EmployeeService) checkDepartmentExistsWithRetry(ctx context.Context, departmentID string) (bool, error) {
 	const maxRetries = 3
 	backoff := 100 * time.Millisecond
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		// Execute through circuit breaker
 		result, err := s.circuitBreaker.Execute(func() (interface{}, error) {
 			return s.checkDepartmentExists(ctx, departmentID)
 		})
@@ -123,18 +132,21 @@ func (s *EmployeeService) checkDepartmentExistsWithRetry(ctx context.Context, de
 			return result.(bool), nil
 		}
 
-		// If circuit breaker is open, fail fast
+		// Circuit breaker open
 		if err == gobreaker.ErrOpenState {
-			return false, fmt.Errorf("circuit breaker open: departments service unavailable")
+			log.Printf("Circuit breaker open for departments service")
+			return false, ErrDepartmentsServiceUnavailable
 		}
 
-		// For other errors, retry after backoff
+		// For other errors, retry
 		if attempt < maxRetries-1 {
+			log.Printf("Departments service call failed (attempt %d): %v. Retrying...", attempt+1, err)
 			time.Sleep(backoff)
-			backoff *= 2 // exponential backoff
+			backoff *= 2
 		}
 	}
-	return false, fmt.Errorf("max retries exceeded")
+	log.Printf("All retries exhausted for departments service")
+	return false, ErrDepartmentsServiceUnavailable
 }
 
 // checkDepartmentExists calls the departments microservice (actual HTTP call)
