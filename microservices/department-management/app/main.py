@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List
 from contextlib import asynccontextmanager
@@ -10,10 +11,9 @@ from app.database import SessionLocal, engine
 models.Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     # Startup
     print("Starting departments service...")
-    print(app)
     yield
     # Shutdown
     print("Shutting down departments service...")
@@ -34,15 +34,56 @@ def get_db():
     finally:
         db.close()
 
+# Custom exception handler for HTTPException
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_: Request, exc: HTTPException):
+    error_response = models.ErrorResponse(
+        code=str(exc.status_code),
+        message=exc.detail,
+        details=[
+            models.ErrorDetail(
+                loc=["request", "path"],
+                msg=exc.detail,
+                type="http_exception"
+            )
+        ]
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response.model_dump()
+    )
+
+# Custom exception handler for validation errors
+from fastapi.exceptions import RequestValidationError
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_: Request, exc: RequestValidationError):
+    error_details = [
+        models.ErrorDetail(
+            loc=error.get("loc", []),
+            msg=error.get("msg", ""),
+            type=error.get("type", "")
+        )
+        for error in exc.errors()
+    ]
+    error_response = models.ErrorResponse(
+        code="422",
+        message="Validation error",
+        details=error_details
+    )
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=error_response.model_dump()
+    )
+
 @app.get("/departments-service/api/")
 async def root():
     return {
         "service": "Departments Service",
         "version": "1.0.0",
         "endpoints": [
-            "POST /departaments - Create a new department",
-            "GET /departaments/{id} - Get department by ID",
-            "GET /departaments - List all departments"
+            "POST /departments - Create a new department",
+            "GET /departments/{id} - Get department by ID",
+            "GET /departments - List all departments"
         ]
     }
 
@@ -57,12 +98,6 @@ async def create_department(
     department: schemas.DepartmentCreate,
     db: Session = Depends(get_db)
 ):
-    """
-    Create a new department:
-    
-    - **name**: Department name (required)
-    - **description**: Department description (optional)
-    """
     db_department = crud.create_department(db=db, department=department)
     return {
         "message": "Department created successfully",
@@ -79,11 +114,6 @@ async def get_department(
     department_id: str,
     db: Session = Depends(get_db)
 ):
-    """
-    Get a department by its unique ID
-    
-    - **department_id**: The ID of the department to retrieve
-    """
     department = crud.get_department(db, department_id)
     if not department:
         raise HTTPException(
@@ -96,7 +126,7 @@ async def get_department(
     }
 
 @app.get(
-   "/departments-service/api/departments",
+    "/departments-service/api/departments",
     response_model=List[schemas.Department],
     summary="List all departments",
     description="Retrieves a list of all departments"
@@ -106,11 +136,5 @@ async def get_departments(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """
-    Get all departments with pagination:
-    
-    - **skip**: Number of records to skip (default: 0)
-    - **limit**: Maximum number of records to return (default: 100)
-    """
     departments = crud.get_departments(db, skip=skip, limit=limit)
     return departments
