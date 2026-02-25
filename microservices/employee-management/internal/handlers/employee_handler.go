@@ -10,7 +10,6 @@ import (
 	"employee-management/internal/models"
 	"employee-management/internal/repository"
 	"employee-management/internal/service"
-	"employee-management/internal/validator"
 
 	"github.com/gin-gonic/gin"
 )
@@ -41,25 +40,25 @@ func NewEmployeeHandler(s *service.EmployeeService) *EmployeeHandler {
 func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 	var req models.Employee
 
-	// Check JSON shape / types
+	// Check JSON shape / types - service handles validation
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, "Invalid JSON format")
 		return
 	}
 
-	// Input validation
-	validation := validator.ValidateEmployee(req.Email, req.Name)
-
-	if !validation.IsValid {
-		api.ValidationError(c, http.StatusBadRequest, "Validation failed", validation.Errors)
-		return
-	}
-
-	// Business logic
+	// Call service - as it handles ALL business logic
 	if err := h.service.Create(c.Request.Context(), &req); err != nil {
 		switch {
+		case errors.Is(err, service.ErrDepartmentRequired):
+			api.BadRequest(c, err.Error())
+		case errors.Is(err, service.ErrNameRequired):
+			api.BadRequest(c, err.Error())
+		case errors.Is(err, service.ErrEmailRequired):
+			api.BadRequest(c, err.Error())
+		case errors.Is(err, service.ErrDepartmentNotFound):
+			api.BadRequest(c, err.Error())
 		case errors.Is(err, repository.ErrEmailAlreadyExists):
-			api.Conflict(c, "Email already exist")
+			api.Conflict(c, "Email already exists")
 		default:
 			api.InternalServerError(c, "Failed to create employee")
 		}
