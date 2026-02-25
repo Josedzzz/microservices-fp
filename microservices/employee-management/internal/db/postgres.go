@@ -38,11 +38,8 @@ func ensureSchemaAndTable(ctx context.Context, db *pgxpool.Pool) error {
 	tableQuery := `
 	CREATE TABLE IF NOT EXISTS employee.employees (
 		id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-		first_name VARCHAR(255) NOT NULL,
-		last_name VARCHAR(255) NOT NULL,
+		name VARCHAR(255) NOT NULL,
 		email VARCHAR(255) UNIQUE NOT NULL,
-		employee_number VARCHAR(50) UNIQUE NOT NULL,
-		position VARCHAR(255) NOT NULL,
 		department VARCHAR(255) NOT NULL,
 		status VARCHAR(20) NOT NULL,
 		hire_date TIMESTAMP NOT NULL,

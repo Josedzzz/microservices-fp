@@ -48,7 +48,7 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 	}
 
 	// Input validation
-	validation := validator.ValidateEmployee(req.Email, req.EmployeeNumber, req.FirstName, req.LastName)
+	validation := validator.ValidateEmployee(req.Email, req.Name)
 
 	if !validation.IsValid {
 		api.ValidationError(c, http.StatusBadRequest, "Validation failed", validation.Errors)
@@ -60,8 +60,6 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 		switch {
 		case errors.Is(err, repository.ErrEmailAlreadyExists):
 			api.Conflict(c, "Email already exist")
-		case errors.Is(err, repository.ErrEmployeeNumberAlreadyExists):
-			api.Conflict(c, "Employee number already exists")
 		default:
 			api.InternalServerError(c, "Failed to create employee")
 		}
@@ -202,12 +200,7 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 
 	req.ID = id
 
-	validation := validator.ValidateEmployee(
-		req.Email,
-		req.EmployeeNumber,
-		req.FirstName,
-		req.LastName,
-	)
+	validation := validator.ValidateEmployee(req.Email, req.Name)
 
 	if !validation.IsValid {
 		api.ValidationError(c, http.StatusBadRequest, "Validation failed", validation.Errors)
@@ -220,8 +213,6 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 			api.NotFound(c, "Employee not found")
 		case errors.Is(err, repository.ErrEmailAlreadyExists):
 			api.Conflict(c, "Email already exists")
-		case errors.Is(err, repository.ErrEmployeeNumberAlreadyExists):
-			api.Conflict(c, "Employee number already exists")
 		default:
 			api.InternalServerError(c, "Failed to update employee")
 		}

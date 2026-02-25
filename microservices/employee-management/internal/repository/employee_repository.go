@@ -46,29 +46,25 @@ var (
 func (r *employeeRepository) Create(ctx context.Context, e *models.Employee) error {
 	query := `
         INSERT INTO employee.employees
-        (first_name, last_name, email, employee_number, position, department, status, hire_date)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        (name, email, department, status, hire_date)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id, created_at, updated_at
     `
 
 	err := r.db.QueryRow(ctx, query,
-		e.FirstName,
-		e.LastName,
+		e.Name,
 		e.Email,
-		e.EmployeeNumber,
-		e.Position,
-		e.Department,
+		e.DepartmentID,
 		e.Status,
 		e.HireDate,
 	).Scan(&e.ID, &e.CreatedAt, &e.UpdatedAt)
 	if err != nil {
+
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			switch pgErr.ConstraintName {
 			case "employees_email_key":
 				return ErrEmailAlreadyExists
-			case "employees_employee_number_key":
-				return ErrEmployeeNumberAlreadyExists
 			default:
 				return ErrEmployeeAlreadyExists
 			}
@@ -91,12 +87,8 @@ func (r *employeeRepository) FindByID(ctx context.Context, id int64) (*models.Em
 	var emp models.Employee
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&emp.ID,
-		&emp.FirstName,
-		&emp.LastName,
+		&emp.Name,
 		&emp.Email,
-		&emp.EmployeeNumber,
-		&emp.Position,
-		&emp.Department,
 		&emp.Status,
 		&emp.HireDate,
 		&emp.CreatedAt,
@@ -166,12 +158,8 @@ func (r *employeeRepository) FindAll(ctx context.Context, limit, offset int, fil
 		var emp models.Employee
 		err := rows.Scan(
 			&emp.ID,
-			&emp.FirstName,
-			&emp.LastName,
+			&emp.Name,
 			&emp.Email,
-			&emp.EmployeeNumber,
-			&emp.Position,
-			&emp.Department,
 			&emp.Status,
 			&emp.HireDate,
 			&emp.CreatedAt,
@@ -238,15 +226,10 @@ func (r *employeeRepository) Update(ctx context.Context, e *models.Employee) err
 
 	result, err := r.db.Exec(ctx, query,
 		e.ID,
-		e.FirstName,
-		e.LastName,
+		e.Name,
 		e.Email,
-		e.EmployeeNumber,
-		e.Position,
-		e.Department,
 		e.Status,
 	)
-
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {

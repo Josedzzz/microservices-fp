@@ -15,15 +15,12 @@ const (
 // Employee represents an employee record in the system
 // All fields are tagged for JSON serialization
 type Employee struct {
-	ID             int64          `json:"id"`
-	FirstName      string         `json:"firstName"`
-	LastName       string         `json:"lastName"`
-	Email          string         `json:"email"`
-	EmployeeNumber string         `json:"employeeNumber"`
-	Position       string         `json:"position"`
-	Department     string         `json:"department"`
-	Status         EmployeeStatus `json:"status"`
-	HireDate       time.Time      `json:"hireDate"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"updatedAt"`
+	ID           int64          `json:"id"`
+	Name         string         `json:"name"`
+	Email        string         `json:"email"`
+	DepartmentID string         `json:"departmentID"`
+	Status       EmployeeStatus `json:"status"`
+	HireDate     time.Time      `json:"hireDate"`
+	CreatedAt    time.Time      `json:"createdAt"`
+	UpdatedAt    time.Time      `json:"updatedAt"`
 }

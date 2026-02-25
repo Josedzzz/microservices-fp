@@ -19,7 +19,7 @@ type ValidationResult struct {
 }
 
 // ValidateEmployee validates employee data
-func ValidateEmployee(email, employeeNumber, firstName, lastName string) ValidationResult {
+func ValidateEmployee(email, name string) ValidationResult {
 	result := ValidationResult{IsValid: true, Errors: []api.ErrorDetail{}}
 
 	// Validate email
@@ -38,29 +38,11 @@ func ValidateEmployee(email, employeeNumber, firstName, lastName string) Validat
 		result.IsValid = false
 	}
 
-	// Validate employee number
-	if employeeNumber == "" {
-		result.Errors = append(result.Errors, api.ErrorDetail{
-			Field:   "employeeNumber",
-			Message: "Employee number is required",
-		})
-		result.IsValid = false
-	}
-
 	// Validate name
-	if strings.TrimSpace(firstName) == "" {
+	if strings.TrimSpace(name) == "" {
 		result.Errors = append(result.Errors, api.ErrorDetail{
-			Field:   "firstName",
-			Message: "First name is required",
-		})
-		result.IsValid = false
-	}
-
-	// Validate last name
-	if strings.TrimSpace(lastName) == "" {
-		result.Errors = append(result.Errors, api.ErrorDetail{
-			Field:   "lastName",
-			Message: "Last name is required",
+			Field:   "name",
+			Message: "Name is required",
 		})
 		result.IsValid = false
 	}
