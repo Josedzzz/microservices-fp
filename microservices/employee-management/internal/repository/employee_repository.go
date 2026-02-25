@@ -18,8 +18,8 @@ import (
 type EmployeeRepository interface {
 	Create(ctx context.Context, e *models.Employee) error
 	FindByID(ctx context.Context, id int64) (*models.Employee, error)
-	FindAll(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]models.Employee, error)
-	Count(ctx context.Context, filters map[string]interface{}) (int, error)
+	FindAll(ctx context.Context, limit, offset int, filters map[string]any) ([]models.Employee, error)
+	Count(ctx context.Context, filters map[string]any) (int, error)
 	Update(ctx context.Context, e *models.Employee) error
 	Delete(ctx context.Context, id int64) error
 }
@@ -59,7 +59,6 @@ func (r *employeeRepository) Create(ctx context.Context, e *models.Employee) err
 		e.HireDate,
 	).Scan(&e.ID, &e.CreatedAt, &e.UpdatedAt)
 	if err != nil {
-
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			switch pgErr.ConstraintName {
@@ -78,17 +77,17 @@ func (r *employeeRepository) Create(ctx context.Context, e *models.Employee) err
 // FindByID retrieves an employee by their id
 func (r *employeeRepository) FindByID(ctx context.Context, id int64) (*models.Employee, error) {
 	query := `
-        SELECT id, first_name, last_name, email, employee_number, 
-               position, department, status, hire_date, created_at, updated_at
-        FROM employee.employees 
-        WHERE id = $1
-    `
+		SELECT id, name, email, department, status, hire_date, created_at, updated_at
+		FROM employee.employees 
+		WHERE id = $1
+	`
 
 	var emp models.Employee
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&emp.ID,
 		&emp.Name,
 		&emp.Email,
+		&emp.DepartmentID,
 		&emp.Status,
 		&emp.HireDate,
 		&emp.CreatedAt,
@@ -104,13 +103,12 @@ func (r *employeeRepository) FindByID(ctx context.Context, id int64) (*models.Em
 	return &emp, nil
 }
 
-// FindAll retrives all employees from the db
-func (r *employeeRepository) FindAll(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]models.Employee, error) {
-	baseQuery := `SELECT id, first_name, last_name, email, employee_number, 
-                         position, department, status, hire_date, created_at, updated_at
-                  FROM employee.employees`
+// FindAll retrieves all employees from the database
+func (r *employeeRepository) FindAll(ctx context.Context, limit, offset int, filters map[string]any) ([]models.Employee, error) {
+	baseQuery := `SELECT id, name, email, department, status, hire_date, created_at, updated_at
+				  FROM employee.employees`
 	var conditions []string
-	var args []interface{}
+	var args []any
 	argPos := 1
 
 	if dept, ok := filters["department"]; ok && dept != "" {
@@ -121,11 +119,6 @@ func (r *employeeRepository) FindAll(ctx context.Context, limit, offset int, fil
 	if status, ok := filters["status"]; ok && status != "" {
 		conditions = append(conditions, fmt.Sprintf("status = $%d", argPos))
 		args = append(args, status)
-		argPos++
-	}
-	if pos, ok := filters["position"]; ok && pos != "" {
-		conditions = append(conditions, fmt.Sprintf("position = $%d", argPos))
-		args = append(args, pos)
 		argPos++
 	}
 
@@ -139,16 +132,6 @@ func (r *employeeRepository) FindAll(ctx context.Context, limit, offset int, fil
 
 	rows, err := r.db.Query(ctx, baseQuery, args...)
 	if err != nil {
-		// Check for specific PostgreSQL errors
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			switch pgErr.Code {
-			case "42P01": // undefined_table
-				return nil, fmt.Errorf("employees table does not exist: %w", err)
-			case "42501": // insufficient_privilege
-				return nil, fmt.Errorf("insufficient privileges to access employees: %w", err)
-			}
-		}
 		return nil, fmt.Errorf("failed to query employees: %w", err)
 	}
 	defer rows.Close()
@@ -160,6 +143,7 @@ func (r *employeeRepository) FindAll(ctx context.Context, limit, offset int, fil
 			&emp.ID,
 			&emp.Name,
 			&emp.Email,
+			&emp.DepartmentID,
 			&emp.Status,
 			&emp.HireDate,
 			&emp.CreatedAt,
@@ -171,20 +155,17 @@ func (r *employeeRepository) FindAll(ctx context.Context, limit, offset int, fil
 		employees = append(employees, emp)
 	}
 
-	// Check for any iteration errors
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating employee rows: %w", err)
 	}
 
-	// Returning empty slice (not nil) for no employees is intentional
-	// This makes it easier for callers (no nil check needed)
 	return employees, nil
 }
 
-func (r *employeeRepository) Count(ctx context.Context, filters map[string]interface{}) (int, error) {
+func (r *employeeRepository) Count(ctx context.Context, filters map[string]any) (int, error) {
 	baseQuery := `SELECT COUNT(*) FROM employee.employees`
 	var conditions []string
-	var args []interface{}
+	var args []any
 	argPos := 1
 
 	// same filter logic
@@ -216,18 +197,18 @@ func (r *employeeRepository) Count(ctx context.Context, filters map[string]inter
 // Update modifies an existing employee record
 func (r *employeeRepository) Update(ctx context.Context, e *models.Employee) error {
 	query := `
-        UPDATE employee.employees 
-        SET first_name = $2, last_name = $3, email = $4, 
-            employee_number = $5, position = $6, department = $7,
-            status = $8, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $1
-        RETURNING updated_at
-    `
+		UPDATE employee.employees 
+		SET name = $2, email = $3, department = $4, 
+			status = $5, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+		RETURNING updated_at
+	`
 
 	result, err := r.db.Exec(ctx, query,
 		e.ID,
 		e.Name,
 		e.Email,
+		e.DepartmentID,
 		e.Status,
 	)
 	if err != nil {
@@ -236,8 +217,6 @@ func (r *employeeRepository) Update(ctx context.Context, e *models.Employee) err
 			switch {
 			case pgErr.Code == "23505" && pgErr.ConstraintName == "employees_email_key":
 				return ErrEmailAlreadyExists
-			case pgErr.Code == "23505" && pgErr.ConstraintName == "employees_employee_number_key":
-				return ErrEmployeeNumberAlreadyExists
 			}
 		}
 		return fmt.Errorf("failed to update employee: %w", err)
@@ -247,7 +226,6 @@ func (r *employeeRepository) Update(ctx context.Context, e *models.Employee) err
 		return ErrEmployeeNotFound
 	}
 
-	// Get updated_at if needed
 	err = r.db.QueryRow(ctx, "SELECT updated_at FROM employee.employees WHERE id = $1", e.ID).Scan(&e.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to get updated timestamp: %w", err)
