@@ -12,6 +12,15 @@ RUN python -c "import uvicorn; print('Uvicorn installed successfully')"
 # Copy application code
 COPY ./app /app/app
 
+# Create a non-root user
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+
+# Change ownership of files to the non-root user
+RUN chown -R appuser:appgroup /app
+
+# Switch to the non-root user
+USER appuser
+
 # Expose the port
 EXPOSE 8082
 

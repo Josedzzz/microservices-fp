@@ -21,8 +21,17 @@ FROM alpine:latest
 
 WORKDIR /app
 
+# Create a non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 # Copy binary from builder
 COPY --from=builder /app/employee-server .
+
+# Change ownership of files to the non-root user
+RUN chown -R appuser:appgroup /app
+
+# Switch to the non-root user
+USER appuser
 
 # Expose the application port
 EXPOSE 8081
