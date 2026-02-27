@@ -102,3 +102,17 @@ Database: departments_db
 Schema: public
 Table: departments
 ```
+
+## Tasks
+
+### Branch rabbit
+
+Implement rabbitmq with the employee service
+
+### Branch notifications
+
+Implement the base of the notification service
+
+## Branch profiles
+
+Implement the base of the profile service
