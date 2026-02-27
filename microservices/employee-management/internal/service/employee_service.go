@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"employee-management/internal/models"
@@ -23,6 +24,10 @@ var (
 	ErrEmailRequired                 = errors.New("email is required")
 	ErrDepartmentNotFound            = errors.New("department ID does not exists")
 	ErrDepartmentsServiceUnavailable = errors.New("departments service is currently unavailable")
+	ErrEmailAlreadyExists            = errors.New("email already exists")
+	ErrEmployeeNotFound              = errors.New("employee not found")
+	ErrEmailInvalidFormat            = errors.New("invalid email format")
+	ErrNameInvalidFormat             = errors.New("invalid name format")
 )
 
 // EmployeeService handles business logic for employee operations
@@ -37,7 +42,6 @@ type EmployeeService struct {
 // NewEmployeeService creates a new instance of EmployeeService
 func NewEmployeeService(repo repository.EmployeeRepository) *EmployeeService {
 	// Circuit breaker settings
-	// TODO Clear logs
 	cbSettings := gobreaker.Settings{
 		Name:        "Departments Service",
 		MaxRequests: 3,
@@ -66,9 +70,9 @@ func NewEmployeeService(repo repository.EmployeeRepository) *EmployeeService {
 	}
 }
 
-// getDepartmentsServiceURL reads from environment or uses default
-// Is this stupid? TODO put this in an environment variable
+// getDepartmentsServiceURL uses a default value
 func getDepartmentsServiceURL() string {
+	// TODO put this in an environment variable eventually
 	url := "http://departments-service:8082"
 	return url
 }
@@ -78,19 +82,18 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 	// Validate field formats using "internal/validator"
 	validation := validator.ValidateEmployee(e.Email, e.Name)
 	if !validation.IsValid {
-		// Convert validator errors to service errors
-		for _, errDetail := range validation.Errors {
-			switch errDetail.Field {
+		for _, verr := range validation.Errors {
+			switch verr.Field {
 			case "email":
-				if errDetail.Message == "Email is required" {
+				if verr.Code == validator.CodeRequired {
 					return ErrEmailRequired
 				}
-				return fmt.Errorf("invalid email: %s", errDetail.Message)
+				return ErrEmailInvalidFormat
 			case "name":
-				if errDetail.Message == "Name is required" {
+				if verr.Code == validator.CodeRequired {
 					return ErrNameRequired
 				}
-				return fmt.Errorf("invalid name: %s", errDetail.Message)
+				return ErrNameInvalidFormat
 			}
 		}
 		return errors.New("validation failed")
@@ -102,12 +105,21 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 	}
 
 	// Check if the department ID exists via HTTP call to the departments service
-	exists, err := s.checkDepartmentExistsWithRetry(ctx, e.DepartmentID)
+	deptExists, err := s.checkDepartmentExistsWithRetry(ctx, e.DepartmentID)
 	if err != nil {
 		return err
 	}
-	if !exists {
+	if !deptExists {
 		return ErrDepartmentNotFound
+	}
+
+	// Check if the email already exists with a call to the repository
+	emailExists, err := s.checkEmailExists(ctx, e.Email)
+	if err != nil {
+		return err
+	}
+	if emailExists {
+		return ErrEmailAlreadyExists
 	}
 
 	// Set defaults
@@ -118,7 +130,14 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 	return s.repo.Create(ctx, e)
 }
 
-// TODO Comment out logs
+func (s *EmployeeService) checkEmailExists(ctx context.Context, email string) (bool, error) {
+	employee, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return false, err
+	}
+	return employee != nil, nil
+}
+
 func (s *EmployeeService) checkDepartmentExistsWithRetry(ctx context.Context, departmentID string) (bool, error) {
 	const maxRetries = 3
 	backoff := 100 * time.Millisecond
@@ -181,7 +200,14 @@ func (s *EmployeeService) checkDepartmentExists(ctx context.Context, departmentI
 
 // FindByID retrieves an employee by id
 func (s *EmployeeService) FindByID(ctx context.Context, id int64) (*models.Employee, error) {
-	return s.repo.FindByID(ctx, id)
+	employee, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve employee: %w", err)
+	}
+	if employee == nil {
+		return nil, ErrEmployeeNotFound
+	}
+	return employee, nil
 }
 
 // FindAll retrieves all employees
@@ -214,12 +240,154 @@ func (s *EmployeeService) FindAll(ctx context.Context, page, pageSize int, filte
 	return employees, total, nil
 }
 
-// Update updates an employee
-func (s *EmployeeService) Update(ctx context.Context, e *models.Employee) error {
-	return s.repo.Update(ctx, e)
+// Update updates an employee and returns the updated employee
+func (s *EmployeeService) Update(ctx context.Context, e *models.Employee) (*models.Employee, error) {
+	log.Printf("UPDATE - Request received: ID=%d, Name='%s', Email='%s', Dept='%s', Status='%s'",
+		e.ID, e.Name, e.Email, e.DepartmentID, e.Status)
+
+	// Check if employee exists
+	existing, err := s.repo.FindByID(ctx, e.ID)
+	if err != nil {
+		log.Printf("UPDATE - FindByID error: %v", err)
+		if strings.Contains(err.Error(), "not found") {
+			return nil, ErrEmployeeNotFound
+		}
+		return nil, fmt.Errorf("failed to verify employee existence: %w", err)
+	}
+	log.Printf("UPDATE - Existing employee: Name='%s', Email='%s', Dept='%s', Status='%s'",
+		existing.Name, existing.Email, existing.DepartmentID, existing.Status)
+
+	// Track what needs validation
+	emailChanged := false
+	deptChanged := false
+
+	// Name update (if provided)
+	if e.Name != "" {
+		log.Printf("UPDATE - Name provided: '%s'", e.Name)
+		if e.Name != existing.Name {
+			log.Printf("UPDATE - Name changing from '%s' to '%s'", existing.Name, e.Name)
+			// Validate name
+			validation := validator.ValidateField("name", e.Name)
+			if !validation.IsValid {
+				log.Printf("UPDATE - Name validation failed: %v", validation.Errors)
+				return nil, fmt.Errorf("invalid name: %s", validation.Errors[0].Message)
+			}
+			existing.Name = e.Name
+		} else {
+			log.Printf("UPDATE - Name unchanged")
+		}
+	} else {
+		log.Printf("UPDATE - Name not provided (empty string), keeping existing: '%s'", existing.Name)
+	}
+
+	// Email update (if provided)
+	if e.Email != "" {
+		log.Printf("UPDATE - Email provided: '%s'", e.Email)
+		if e.Email != existing.Email {
+			log.Printf("UPDATE - Email changing from '%s' to '%s'", existing.Email, e.Email)
+			// Validate email format
+			validation := validator.ValidateField("email", e.Email)
+			if !validation.IsValid {
+				log.Printf("UPDATE - Email validation failed: %v", validation.Errors)
+				return nil, fmt.Errorf("invalid email: %s", validation.Errors[0].Message)
+			}
+			emailChanged = true
+		} else {
+			log.Printf("UPDATE - Email unchanged")
+		}
+	} else {
+		log.Printf("UPDATE - Email not provided (empty string), keeping existing: '%s'", existing.Email)
+	}
+
+	// Department update (if provided)
+	if e.DepartmentID != "" {
+		log.Printf("UPDATE - Department provided: '%s'", e.DepartmentID)
+		if e.DepartmentID != existing.DepartmentID {
+			log.Printf("UPDATE - Department changing from '%s' to '%s'", existing.DepartmentID, e.DepartmentID)
+			deptChanged = true
+		} else {
+			log.Printf("UPDATE - Department unchanged")
+		}
+	} else {
+		log.Printf("UPDATE - Department not provided (empty string), keeping existing: '%s'", existing.DepartmentID)
+	}
+
+	// Status update (if provided)
+	if e.Status != "" {
+		log.Printf("UPDATE - Status provided: '%s'", e.Status)
+		if e.Status != existing.Status {
+			log.Printf("UPDATE - Status changing from '%s' to '%s'", existing.Status, e.Status)
+			existing.Status = e.Status
+		} else {
+			log.Printf("UPDATE - Status unchanged")
+		}
+	} else {
+		log.Printf("UPDATE - Status not provided (empty string), keeping existing: '%s'", existing.Status)
+	}
+
+	// Perform validations that need external calls
+	if emailChanged {
+		log.Printf("UPDATE - Checking if email '%s' already exists", e.Email)
+		emailExists, err := s.checkEmailExists(ctx, e.Email)
+		if err != nil {
+			log.Printf("UPDATE - Email check error: %v", err)
+			return nil, err
+		}
+		if emailExists {
+			log.Printf("UPDATE - Email '%s' already exists", e.Email)
+			return nil, ErrEmailAlreadyExists
+		}
+		log.Printf("UPDATE - Email '%s' is available", e.Email)
+		existing.Email = e.Email
+	}
+
+	if deptChanged {
+		log.Printf("UPDATE - Checking if department '%s' exists", e.DepartmentID)
+		deptExists, err := s.checkDepartmentExistsWithRetry(ctx, e.DepartmentID)
+		if err != nil {
+			log.Printf("UPDATE - Department check error: %v", err)
+			return nil, err
+		}
+		if !deptExists {
+			log.Printf("UPDATE - Department '%s' not found", e.DepartmentID)
+			return nil, ErrDepartmentNotFound
+		}
+		log.Printf("UPDATE - Department '%s' exists", e.DepartmentID)
+		existing.DepartmentID = e.DepartmentID
+	}
+
+	log.Printf("UPDATE - Final employee to save: Name='%s', Email='%s', Dept='%s', Status='%s'",
+		existing.Name, existing.Email, existing.DepartmentID, existing.Status)
+
+	// Perform update with merged data
+	err = s.repo.Update(ctx, existing)
+	if err != nil {
+		log.Printf("UPDATE - Repository update error: %v", err)
+		return nil, err
+	}
+
+	// Fetch the updated employee to return
+	updated, err := s.repo.FindByID(ctx, e.ID)
+	if err != nil {
+		log.Printf("UPDATE - Failed to fetch updated employee: %v", err)
+		return nil, fmt.Errorf("failed to fetch updated employee: %w", err)
+	}
+
+	log.Printf("UPDATE - Successfully updated employee ID=%d", e.ID)
+	return updated, nil
 }
 
 // Delete removes an employee
 func (s *EmployeeService) Delete(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+	// DELETE is idempotent
+	// And Repository returns nil when no rows affected so no actual reason to check existence
+	err := s.repo.Delete(ctx, id)
+	if err != nil {
+		// Check for foreign key violation
+		if strings.Contains(err.Error(), "foreign key violation") {
+			return fmt.Errorf("cannot delete employee with existing relationships")
+		}
+		return fmt.Errorf("failed to delete employee: %w", err)
+	}
+	return nil
 }

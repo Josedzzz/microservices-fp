@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"employee-management/internal/models"
@@ -18,6 +19,7 @@ import (
 type EmployeeRepository interface {
 	Create(ctx context.Context, e *models.Employee) error
 	FindByID(ctx context.Context, id int64) (*models.Employee, error)
+	FindByEmail(ctx context.Context, email string) (*models.Employee, error)
 	FindAll(ctx context.Context, limit, offset int, filters map[string]any) ([]models.Employee, error)
 	Count(ctx context.Context, filters map[string]any) (int, error)
 	Update(ctx context.Context, e *models.Employee) error
@@ -33,14 +35,6 @@ type employeeRepository struct {
 func NewEmployeeRepository(db *pgxpool.Pool) EmployeeRepository {
 	return &employeeRepository{db: db}
 }
-
-// Declaration of domain errors.
-var (
-	ErrEmailAlreadyExists          = errors.New("email already exists")
-	ErrEmployeeNumberAlreadyExists = errors.New("employee number already exists")
-	ErrEmployeeAlreadyExists       = errors.New("employee already exists")
-	ErrEmployeeNotFound            = errors.New("employee not found")
-)
 
 // Create adds a new employee to the database
 func (r *employeeRepository) Create(ctx context.Context, e *models.Employee) error {
@@ -61,16 +55,13 @@ func (r *employeeRepository) Create(ctx context.Context, e *models.Employee) err
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			switch pgErr.ConstraintName {
-			case "employees_email_key":
-				return ErrEmailAlreadyExists
-			default:
-				return ErrEmployeeAlreadyExists
-			}
+			// This should be extremely rare - means a race condition occurred
+			// Log it for monitoring, but return a generic error since service already checked
+			log.Printf("RACE CONDITION: duplicate email %s slipped through validation", e.Email)
+			return fmt.Errorf("concurrent creation conflict: %w", err)
 		}
-		return err
+		return fmt.Errorf("failed to insert employee: %w", err)
 	}
-
 	return nil
 }
 
@@ -95,11 +86,38 @@ func (r *employeeRepository) FindByID(ctx context.Context, id int64) (*models.Em
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrEmployeeNotFound
+			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to find employee by id %d: %w", id, err)
 	}
+	return &emp, nil
+}
 
+// FindByEmail retrieves an employee by their email address
+func (r *employeeRepository) FindByEmail(ctx context.Context, email string) (*models.Employee, error) {
+	query := `
+		SELECT id, name, email, department, status, hire_date, created_at, updated_at
+		FROM employee.employees 
+		WHERE email = $1
+	`
+
+	var emp models.Employee
+	err := r.db.QueryRow(ctx, query, email).Scan(
+		&emp.ID,
+		&emp.Name,
+		&emp.Email,
+		&emp.DepartmentID,
+		&emp.Status,
+		&emp.HireDate,
+		&emp.CreatedAt,
+		&emp.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to find employee by email: %w", err)
+	}
 	return &emp, nil
 }
 
@@ -212,20 +230,22 @@ func (r *employeeRepository) Update(ctx context.Context, e *models.Employee) err
 		e.Status,
 	)
 	if err != nil {
+		// Check for duplicate email (race condition)
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			switch {
-			case pgErr.Code == "23505" && pgErr.ConstraintName == "employees_email_key":
-				return ErrEmailAlreadyExists
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			if pgErr.ConstraintName == "employees_email_key" {
+				log.Printf("RACE CONDITION: duplicate email %s in update", e.Email)
+				return fmt.Errorf("concurrent update conflict: %w", err)
 			}
 		}
 		return fmt.Errorf("failed to update employee: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrEmployeeNotFound
+		return fmt.Errorf("employee with id %d not found", e.ID)
 	}
 
+	// Get updated timestamp
 	err = r.db.QueryRow(ctx, "SELECT updated_at FROM employee.employees WHERE id = $1", e.ID).Scan(&e.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to get updated timestamp: %w", err)
@@ -242,14 +262,14 @@ func (r *employeeRepository) Delete(ctx context.Context, id int64) error {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == "23503" { // foreign_key_violation
-				return fmt.Errorf("employee has related records and cannot be deleted: %w", err)
+				return fmt.Errorf("foreign key violation: employee has related records")
 			}
 		}
 		return fmt.Errorf("failed to delete employee: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
-		return ErrEmployeeNotFound
+		return nil
 	}
 
 	return nil

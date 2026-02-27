@@ -3,21 +3,23 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
 	"employee-management/internal/api"
 	"employee-management/internal/models"
-	"employee-management/internal/repository"
 	"employee-management/internal/service"
 	"employee-management/internal/validator"
 
 	"github.com/gin-gonic/gin"
 )
 
+// TODO Check if the handler in any LOC does not just VALIDATE THE REQUEST, VALIDATE THE ID FORMAT, CALL THE SERVICE.
+
 // EmployeeHandler handles HTTP requests for employee operations
 type EmployeeHandler struct {
-	service *service.EmployeeService // Bussiness logic dependency
+	service *service.EmployeeService
 }
 
 // NewEmployeeHandler creates a new EmployeeHandler instance
@@ -28,43 +30,46 @@ func NewEmployeeHandler(s *service.EmployeeService) *EmployeeHandler {
 // CreateEmployee godoc
 //
 //	@Summary		Create a new employee
-//	@Description	Creates a new employee in the system
+//	@Description	Creates a new employee in the system. Only name, email and departmentID are required.
 //	@Tags			Employees
 //	@Accept			json
 //	@Produce		json
-//	@Param			employee	body		models.Employee		true	"Employee data"
+//	@Param			employee	body		object{name=string,email=string,departmentID=string}	true	"Employee data (only name, email and departmentID needed)"
 //	@Success		201			{object}	models.Employee		"Employee created successfully"
-//	@Failure		400			{object}	api.ErrorResponse	"Invalid JSON format or validation failed"
-//	@Failure		409			{object}	api.ErrorResponse	"Email or employee number already exists"
+//
+// @Failure		400			{object}	api.ErrorResponse	"Invalid JSON format, missing fields, invalid email format, or department not found"
+//
+//	@Failure		409			{object}	api.ErrorResponse	"Email already exists"
+//	@Failure		503			{object}	api.ErrorResponse	"Departments service unavailable"
 //	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/employees [post]
 func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 	var req models.Employee
-
 	// Check JSON shape / types - service handles validation
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, "Invalid JSON format")
+		api.BadRequest(c, "invalid JSON format")
 		return
 	}
-
-	// Call service - as it handles ALL business logic
+	// Call service to handle business logic
 	if err := h.service.Create(c.Request.Context(), &req); err != nil {
 		switch {
-		case errors.Is(err, service.ErrDepartmentRequired):
+		case errors.Is(err, service.ErrDepartmentRequired),
+			errors.Is(err, service.ErrNameRequired),
+			errors.Is(err, service.ErrEmailRequired),
+			errors.Is(err, service.ErrDepartmentNotFound):
 			api.BadRequest(c, err.Error())
-		case errors.Is(err, service.ErrNameRequired):
-			api.BadRequest(c, err.Error())
-		case errors.Is(err, service.ErrEmailRequired):
-			api.BadRequest(c, err.Error())
-		case errors.Is(err, service.ErrDepartmentNotFound):
-			api.BadRequest(c, err.Error())
-		case errors.Is(err, repository.ErrEmailAlreadyExists):
-			api.Conflict(c, "Email already exists")
-		// TODO add ServiceUnavailable to api/
+
+		case errors.Is(err, service.ErrEmailAlreadyExists):
+			api.Conflict(c, err.Error())
+
 		case errors.Is(err, service.ErrDepartmentsServiceUnavailable):
-			api.BadRequest(c, "Departments service is unavailable, please try again later")
+			api.ServiceUnavailable(c, err.Error())
+		case errors.Is(err, service.ErrEmailInvalidFormat),
+			errors.Is(err, service.ErrNameInvalidFormat):
+			api.BadRequest(c, err.Error())
 		default:
-			api.InternalServerError(c, "Failed to create employee")
+			log.Printf("unexpected error creating employee: %v", err) // Log in docker-compose or when compiled
+			api.InternalServerError(c, "failed to create employee")
 		}
 		return
 	}
@@ -78,8 +83,8 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 //	@Description	Retrieves an employee by its ID
 //	@Tags			Employees
 //	@Produce		json
-//	@Param			id	path		int					true	"Employee ID"
-//	@Success		200	{object}	models.Employee		"Employee found"
+//	@Param			id	path		int	true	"Employee ID"
+//	@Success		200	{object}	models.Employee
 //	@Failure		400	{object}	api.ErrorResponse	"Invalid ID format"
 //	@Failure		404	{object}	api.ErrorResponse	"Employee not found"
 //	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
@@ -87,19 +92,21 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 	idParam := c.Param("id")
 
-	id, errs := validator.ValidateID(idParam)
-	if errs != nil {
-		api.ValidationError(c, http.StatusBadRequest, "Invalid ID", errs)
+	id, validationResult := validator.ValidateID(idParam)
+	if !validationResult.IsValid {
+		api.ValidationError(c, http.StatusBadRequest,
+			"invalid ID",
+			validationResult.ToAPIErrorDetails())
 		return
 	}
 
 	emp, err := h.service.FindByID(c.Request.Context(), id)
 	if err != nil {
 		switch {
-		case errors.Is(err, repository.ErrEmployeeNotFound):
-			api.NotFound(c, "Employee not found")
+		case errors.Is(err, service.ErrEmployeeNotFound):
+			api.NotFound(c, err.Error())
 		default:
-			api.InternalServerError(c, "Failed to retrieve employee")
+			api.InternalServerError(c, "failed to retrieve employee")
 		}
 		return
 	}
@@ -108,27 +115,27 @@ func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 }
 
 // GetAllEmployees godoc
-// @Summary Get all employees with pagination and filtering
-// @Description Retrieves employees with pagination support. Can filter by department, status, position.
-// @Tags Employees
-// @Produce json
-// @Param page query int false "Page number (default: 1)"
-// @Param page_size query int false "Number of items per page (default: 10, max: 100)"
-// @Param department query string false "Filter by department"
-// @Param status query string false "Filter by status (ACTIVE, ON_VACATION, RETIRED)"
-// @Param position query string false "Filter by position"
-// @Success 200 {object} api.PaginatedResponse
-// @Failure 400 {object} map[string]string
-// @Failure 500 {object} map[string]string
-// @Router /employees [get]
+//
+//	@Summary		Get all employees with pagination and filtering
+//	@Description	Retrieves employees with pagination support. Can filter by department, status.
+//	@Tags			Employees
+//	@Produce		json
+//	@Param			page		query		int		false	"Page number (default: 1)"
+//	@Param			page_size	query		int		false	"Number of items per page (default: 10, max: 100)"
+//	@Param			department	query		string	false	"Filter by department ID"
+//	@Param			status		query		string	false	"Filter by status (ACTIVE, ON_VACATION, RETIRED)"
+//	@Success		200			{object}	api.PaginatedResponse
+//	@Failure		400			{object}	api.ErrorResponse	"Invalid query parameters"
+//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Router			/employees [get]
 func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 	var query api.PaginationQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid query parameters"})
+		api.BadRequest(c, "invalid query parameters")
 		return
 	}
 
-	// Set defaults for pagination
+	// Set defaults for pagination (service also does this, but early validation is fine)
 	if query.Page < 1 {
 		query.Page = 1
 	}
@@ -146,13 +153,10 @@ func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 	if query.Status != "" {
 		filters["status"] = query.Status
 	}
-	if query.Position != "" {
-		filters["position"] = query.Position
-	}
 
 	employees, total, err := h.service.FindAll(c.Request.Context(), query.Page, query.PageSize, filters)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		api.InternalServerError(c, "failed to retrieve employees")
 		return
 	}
 
@@ -179,50 +183,48 @@ func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 //	@Accept			json
 //	@Produce		json
 //	@Param			id			path		int					true	"Employee ID"
-//	@Param			employee	body		models.Employee		true	"Updated employee data"
-//	@Success		200			{object}	models.Employee		"Employee updated successfully"
-//	@Failure		400			{object}	api.ErrorResponse	"Invalid JSON format or validation failed"
+//	@Param			employee	body		models.Employee		true	"Updated employee data (name, email, departmentID)"
+//	@Success		200			{object}	models.Employee
+//	@Failure		400			{object}	api.ErrorResponse	"Invalid ID, JSON format, or validation failed"
 //	@Failure		404			{object}	api.ErrorResponse	"Employee not found"
-//	@Failure		409			{object}	api.ErrorResponse	"Email or employee number already exists"
+//	@Failure		409			{object}	api.ErrorResponse	"Email already exists"
 //	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/employees/{id} [put]
 func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 	idParam := c.Param("id")
 
-	id, errs := validator.ValidateID(idParam)
-	if errs != nil {
-		api.ValidationError(c, http.StatusBadRequest, "Invalid ID", errs)
+	id, validationResult := validator.ValidateID(idParam)
+	if !validationResult.IsValid {
+		api.ValidationError(c, http.StatusBadRequest,
+			"invalid ID",
+			validationResult.ToAPIErrorDetails())
 		return
 	}
 
 	var req models.Employee
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, "Invalid JSON format")
+		api.BadRequest(c, "invalid JSON format")
 		return
 	}
 
 	req.ID = id
 
-	validation := validator.ValidateEmployee(req.Email, req.Name)
-
-	if !validation.IsValid {
-		api.ValidationError(c, http.StatusBadRequest, "Validation failed", validation.Errors)
-		return
-	}
-
-	if err := h.service.Update(c.Request.Context(), &req); err != nil {
+	updatedEmployee, err := h.service.Update(c.Request.Context(), &req)
+	if err != nil {
 		switch {
-		case errors.Is(err, repository.ErrEmployeeNotFound):
-			api.NotFound(c, "Employee not found")
-		case errors.Is(err, repository.ErrEmailAlreadyExists):
-			api.Conflict(c, "Email already exists")
+		case errors.Is(err, service.ErrEmployeeNotFound):
+			api.NotFound(c, err.Error())
+		case errors.Is(err, service.ErrEmailAlreadyExists):
+			api.Conflict(c, err.Error())
+		case errors.Is(err, service.ErrDepartmentNotFound):
+			api.BadRequest(c, err.Error())
 		default:
-			api.InternalServerError(c, "Failed to update employee")
+			api.InternalServerError(c, "failed to update employee")
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, req)
+	c.JSON(http.StatusOK, updatedEmployee)
 }
 
 // DeleteEmployee godoc
@@ -230,8 +232,8 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 //	@Summary		Delete employee
 //	@Description	Deletes an employee by ID
 //	@Tags			Employees
-//	@Param			id	path	int	true	"Employee ID"
-//	@Success		204	"Employee deleted successfully (no content)"
+//	@Param			id	path		int	true	"Employee ID"
+//	@Success		204	"No Content"
 //	@Failure		400	{object}	api.ErrorResponse	"Invalid ID format"
 //	@Failure		404	{object}	api.ErrorResponse	"Employee not found"
 //	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
@@ -239,18 +241,20 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 func (h *EmployeeHandler) DeleteEmployee(c *gin.Context) {
 	idParam := c.Param("id")
 
-	id, errs := validator.ValidateID(idParam)
-	if errs != nil {
-		api.ValidationError(c, http.StatusBadRequest, "Invalid ID", errs)
+	id, validationResult := validator.ValidateID(idParam)
+	if !validationResult.IsValid {
+		api.ValidationError(c, http.StatusBadRequest,
+			"invalid ID",
+			validationResult.ToAPIErrorDetails())
 		return
 	}
 
 	if err := h.service.Delete(c.Request.Context(), id); err != nil {
 		switch {
-		case errors.Is(err, repository.ErrEmployeeNotFound):
-			api.NotFound(c, "Employee not found")
+		case errors.Is(err, service.ErrEmployeeNotFound):
+			api.NotFound(c, err.Error())
 		default:
-			api.InternalServerError(c, "Failed to delete employee")
+			api.InternalServerError(c, "failed to delete employee")
 		}
 		return
 	}

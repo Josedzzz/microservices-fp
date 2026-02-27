@@ -6,8 +6,7 @@ definitions:
         type: string
       message:
         type: string
-      rejectedValue:
-        type: string
+      rejectedValue: {}
     type: object
   api.ErrorResponse:
     description: Standard error response structure
@@ -50,21 +49,15 @@ definitions:
     properties:
       createdAt:
         type: string
-      department:
+      departmentID:
         type: string
       email:
-        type: string
-      employeeNumber:
-        type: string
-      firstName:
         type: string
       hireDate:
         type: string
       id:
         type: integer
-      lastName:
-        type: string
-      position:
+      name:
         type: string
       status:
         $ref: '#/definitions/models.EmployeeStatus'
@@ -94,7 +87,7 @@ paths:
   /employees:
     get:
       description: Retrieves employees with pagination support. Can filter by department,
-        status, position.
+        status.
       parameters:
       - description: 'Page number (default: 1)'
         in: query
@@ -104,17 +97,13 @@ paths:
         in: query
         name: page_size
         type: integer
-      - description: Filter by department
+      - description: Filter by department ID
         in: query
         name: department
         type: string
       - description: Filter by status (ACTIVE, ON_VACATION, RETIRED)
         in: query
         name: status
-        type: string
-      - description: Filter by position
-        in: query
-        name: position
         type: string
       produces:
       - application/json
@@ -124,31 +113,35 @@ paths:
           schema:
             $ref: '#/definitions/api.PaginatedResponse'
         "400":
-          description: Bad Request
+          description: Invalid query parameters
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/api.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/api.ErrorResponse'
       summary: Get all employees with pagination and filtering
       tags:
       - Employees
     post:
       consumes:
       - application/json
-      description: Creates a new employee in the system
+      description: Creates a new employee in the system. Only name, email and departmentID
+        are required.
       parameters:
-      - description: Employee data
+      - description: Employee data (only name, email and departmentID needed)
         in: body
         name: employee
         required: true
         schema:
-          $ref: '#/definitions/models.Employee'
+          properties:
+            departmentID:
+              type: string
+            email:
+              type: string
+            name:
+              type: string
+          type: object
       produces:
       - application/json
       responses:
@@ -157,15 +150,20 @@ paths:
           schema:
             $ref: '#/definitions/models.Employee'
         "400":
-          description: Invalid JSON format or validation failed
+          description: Invalid JSON format, missing fields, invalid email format,
+            or department not found
           schema:
             $ref: '#/definitions/api.ErrorResponse'
         "409":
-          description: Email or employee number already exists
+          description: Email already exists
           schema:
             $ref: '#/definitions/api.ErrorResponse'
         "500":
           description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Departments service unavailable
           schema:
             $ref: '#/definitions/api.ErrorResponse'
       summary: Create a new employee
@@ -182,7 +180,7 @@ paths:
         type: integer
       responses:
         "204":
-          description: Employee deleted successfully (no content)
+          description: No Content
         "400":
           description: Invalid ID format
           schema:
@@ -210,7 +208,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Employee found
+          description: OK
           schema:
             $ref: '#/definitions/models.Employee'
         "400":
@@ -238,7 +236,7 @@ paths:
         name: id
         required: true
         type: integer
-      - description: Updated employee data
+      - description: Updated employee data (name, email, departmentID)
         in: body
         name: employee
         required: true
@@ -248,11 +246,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: Employee updated successfully
+          description: OK
           schema:
             $ref: '#/definitions/models.Employee'
         "400":
-          description: Invalid JSON format or validation failed
+          description: Invalid ID, JSON format, or validation failed
           schema:
             $ref: '#/definitions/api.ErrorResponse'
         "404":
@@ -260,7 +258,7 @@ paths:
           schema:
             $ref: '#/definitions/api.ErrorResponse'
         "409":
-          description: Email or employee number already exists
+          description: Email already exists
           schema:
             $ref: '#/definitions/api.ErrorResponse'
         "500":

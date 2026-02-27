@@ -21,7 +21,7 @@ const docTemplate = `{
     "paths": {
         "/employees": {
             "get": {
-                "description": "Retrieves employees with pagination support. Can filter by department, status, position.",
+                "description": "Retrieves employees with pagination support. Can filter by department, status.",
                 "produces": [
                     "application/json"
                 ],
@@ -44,7 +44,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Filter by department",
+                        "description": "Filter by department ID",
                         "name": "department",
                         "in": "query"
                     },
@@ -52,12 +52,6 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Filter by status (ACTIVE, ON_VACATION, RETIRED)",
                         "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by position",
-                        "name": "position",
                         "in": "query"
                     }
                 ],
@@ -69,27 +63,21 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid query parameters",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
             },
             "post": {
-                "description": "Creates a new employee in the system",
+                "description": "Creates a new employee in the system. Only name, email and departmentID are required.",
                 "consumes": [
                     "application/json"
                 ],
@@ -102,12 +90,23 @@ const docTemplate = `{
                 "summary": "Create a new employee",
                 "parameters": [
                     {
-                        "description": "Employee data",
+                        "description": "Employee data (only name, email and departmentID needed)",
                         "name": "employee",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.Employee"
+                            "type": "object",
+                            "properties": {
+                                "departmentID": {
+                                    "type": "string"
+                                },
+                                "email": {
+                                    "type": "string"
+                                },
+                                "name": {
+                                    "type": "string"
+                                }
+                            }
                         }
                     }
                 ],
@@ -119,19 +118,25 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid JSON format or validation failed",
+                        "description": "Invalid JSON format, missing fields, invalid email format, or department not found",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "409": {
-                        "description": "Email or employee number already exists",
+                        "description": "Email already exists",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Departments service unavailable",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -160,7 +165,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Employee found",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.Employee"
                         }
@@ -206,7 +211,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Updated employee data",
+                        "description": "Updated employee data (name, email, departmentID)",
                         "name": "employee",
                         "in": "body",
                         "required": true,
@@ -217,13 +222,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Employee updated successfully",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.Employee"
                         }
                     },
                     "400": {
-                        "description": "Invalid JSON format or validation failed",
+                        "description": "Invalid ID, JSON format, or validation failed",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -235,7 +240,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Email or employee number already exists",
+                        "description": "Email already exists",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -265,7 +270,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "204": {
-                        "description": "Employee deleted successfully (no content)"
+                        "description": "No Content"
                     },
                     "400": {
                         "description": "Invalid ID format",
@@ -299,9 +304,7 @@ const docTemplate = `{
                 "message": {
                     "type": "string"
                 },
-                "rejectedValue": {
-                    "type": "string"
-                }
+                "rejectedValue": {}
             }
         },
         "api.ErrorResponse": {
@@ -365,16 +368,10 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
-                "department": {
+                "departmentID": {
                     "type": "string"
                 },
                 "email": {
-                    "type": "string"
-                },
-                "employeeNumber": {
-                    "type": "string"
-                },
-                "firstName": {
                     "type": "string"
                 },
                 "hireDate": {
@@ -383,10 +380,7 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
-                "lastName": {
-                    "type": "string"
-                },
-                "position": {
+                "name": {
                     "type": "string"
                 },
                 "status": {

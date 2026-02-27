@@ -10,9 +10,9 @@ import (
 
 // ErrorDetail represents a specific validation error
 type ErrorDetail struct {
-	Field         string `json:"field"`
-	Message       string `json:"message"`
-	RejectedValue string `json:"rejectedValue,omitempty"`
+	Field         string      `json:"field"`
+	Message       string      `json:"message"`
+	RejectedValue interface{} `json:"rejectedValue,omitempty"`
 }
 
 // ErrorResponse is the standart struct for error response
@@ -55,6 +55,11 @@ func Error(c *gin.Context, status int, message string) {
 // InternalServerError for 500 errors
 func InternalServerError(c *gin.Context, message string) {
 	Error(c, http.StatusInternalServerError, message)
+}
+
+// ServiceUnavailable for 503 errors
+func ServiceUnavailable(c *gin.Context, message string) {
+	Error(c, http.StatusServiceUnavailable, message)
 }
 
 // BadRequest for 400 errors
