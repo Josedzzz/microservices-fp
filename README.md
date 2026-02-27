@@ -111,8 +111,8 @@ Implement rabbitmq with the employee service
 
 ### Branch notifications
 
-Implement the base of the notification service
+Implement the base of the notification service (Java)
 
 ## Branch profiles
 
-Implement the base of the profile service
+Implement the base of the profile service (Ts)
