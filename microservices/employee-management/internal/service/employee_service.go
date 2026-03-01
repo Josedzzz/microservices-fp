@@ -142,8 +142,8 @@ func (s *EmployeeService) checkDepartmentExistsWithRetry(ctx context.Context, de
 	const maxRetries = 3
 	backoff := 100 * time.Millisecond
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		result, err := s.circuitBreaker.Execute(func() (interface{}, error) {
+	for attempt := range [maxRetries]int{} {
+		result, err := s.circuitBreaker.Execute(func() (any, error) {
 			return s.checkDepartmentExists(ctx, departmentID)
 		})
 
@@ -211,7 +211,7 @@ func (s *EmployeeService) FindByID(ctx context.Context, id int64) (*models.Emplo
 }
 
 // FindAll retrieves all employees
-func (s *EmployeeService) FindAll(ctx context.Context, page, pageSize int, filters map[string]interface{}) ([]models.Employee, int, error) {
+func (s *EmployeeService) FindAll(ctx context.Context, page, pageSize int, filters map[string]any) ([]models.Employee, int, error) {
 	// Defensive programming protocols!!!
 	// Validate and set defaults
 	if page < 1 {
