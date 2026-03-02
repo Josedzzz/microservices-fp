@@ -18,6 +18,7 @@ This service is responsible for managing employee data. It is built with Go and 
 - PostgreSQL 15
 - pgx database driver
 - Swagger for API documentation
+- RabbitMQ (event broker)
 
 ## Database Schema
 
@@ -50,6 +51,11 @@ Columns:
 | DB_PASSWORD             | Database password           | postgres              | Yes      |
 | DB_SSLMODE              | SSL mode for database       | disable               | No       |
 | DEPARTMENTS_SERVICE_URL | URL for departments service | http://localhost:8082 | Yes      |
+| RABBITMQ_HOST           | Rabbit host                 | rabbitmq              | Yes      |
+| RABBITMQ_PORT           | Rabbit port                 | 5672                  | Yes      |
+| RABBITMQ_USER           | Rabbit user                 | guest                 | Yes      |
+| RABBITMQ_PASSWORD       | Rabbit password             | guest                 | Yes      |
+| RABBITMQ_VHOST          | Rabbit vhost                | /                     | Yes      |
 
 ## Local Development
 
@@ -83,6 +89,13 @@ DB_SSLMODE=disable
 
 # Departments service URL
 DEPARTMENTS_SERVICE_URL=http://localhost:8082
+
+# RabbitMQ
+RABBITMQ_HOST=rabbitmq
+RABBITMQ_PORT=5672
+RABBITMQ_USER=guest
+RABBITMQ_PASSWORD=guest
+RABBITMQ_VHOST=/
 ```
 
 3. Install dependencies
@@ -93,7 +106,6 @@ go mod download
 
 4. Run the service
 
-````bash
+```bash
 go run cmd/main.go
 ```
-````
