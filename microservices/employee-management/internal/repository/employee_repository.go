@@ -254,18 +254,18 @@ func (r *employeeRepository) Update(ctx context.Context, e *models.Employee) err
 	return nil
 }
 
-// Delete removes an employee from the db by id
+// Delete marks an employee as RETIRED instead of deleting it
 func (r *employeeRepository) Delete(ctx context.Context, id int64) error {
-	query := `DELETE FROM employee.employees WHERE id = $1`
-	result, err := r.db.Exec(ctx, query, id)
+	query := `
+		UPDATE employee.employees
+		SET status = $1,
+		    updated_at = NOW()
+		WHERE id = $2
+	`
+
+	result, err := r.db.Exec(ctx, query, models.StatusRetired, id)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			if pgErr.Code == "23503" { // foreign_key_violation
-				return fmt.Errorf("foreign key violation: employee has related records")
-			}
-		}
-		return fmt.Errorf("failed to delete employee: %w", err)
+		return fmt.Errorf("failed to retire employee: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
