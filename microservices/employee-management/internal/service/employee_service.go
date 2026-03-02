@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"employee-management/internal/messaging"
 	"employee-management/internal/models"
 	"employee-management/internal/repository"
 	"employee-management/internal/validator"
@@ -34,13 +35,14 @@ var (
 // It acts as an intermediary between API handlers and the data repository
 type EmployeeService struct {
 	repo           repository.EmployeeRepository
+	publisher      *messaging.Publisher
 	httpClient     *http.Client
 	departmentsURL string
 	circuitBreaker *gobreaker.CircuitBreaker
 }
 
 // NewEmployeeService creates a new instance of EmployeeService
-func NewEmployeeService(repo repository.EmployeeRepository) *EmployeeService {
+func NewEmployeeService(repo repository.EmployeeRepository, publisher *messaging.Publisher) *EmployeeService {
 	// Circuit breaker settings
 	cbSettings := gobreaker.Settings{
 		Name:        "Departments Service",
@@ -61,7 +63,8 @@ func NewEmployeeService(repo repository.EmployeeRepository) *EmployeeService {
 	}
 
 	return &EmployeeService{
-		repo: repo,
+		repo:      repo,
+		publisher: publisher,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -127,7 +130,29 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 	e.HireDate = time.Now()
 
 	// Create in database
-	return s.repo.Create(ctx, e)
+	errdb := s.repo.Create(ctx, e)
+	if errdb != nil {
+		return errdb
+	}
+
+	event := messaging.EmployeeCreatedEvent{
+		ID:           e.ID,
+		Name:         e.Name,
+		Email:        e.Email,
+		DepartmentID: e.DepartmentID,
+		Status:       e.Status,
+		HireDate:     e.HireDate,
+		CreatedAt:    e.CreatedAt,
+	}
+
+	if err := s.publisher.Publish(
+		messaging.EventEmployeeCreated,
+		event,
+	); err != nil {
+		log.Printf("failed to publish employee.created event: %v", err)
+	}
+
+	return nil
 }
 
 func (s *EmployeeService) checkEmailExists(ctx context.Context, email string) (bool, error) {
@@ -142,8 +167,8 @@ func (s *EmployeeService) checkDepartmentExistsWithRetry(ctx context.Context, de
 	const maxRetries = 3
 	backoff := 100 * time.Millisecond
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		result, err := s.circuitBreaker.Execute(func() (interface{}, error) {
+	for attempt := range [maxRetries]int{} {
+		result, err := s.circuitBreaker.Execute(func() (any, error) {
 			return s.checkDepartmentExists(ctx, departmentID)
 		})
 
@@ -211,7 +236,7 @@ func (s *EmployeeService) FindByID(ctx context.Context, id int64) (*models.Emplo
 }
 
 // FindAll retrieves all employees
-func (s *EmployeeService) FindAll(ctx context.Context, page, pageSize int, filters map[string]interface{}) ([]models.Employee, int, error) {
+func (s *EmployeeService) FindAll(ctx context.Context, page, pageSize int, filters map[string]any) ([]models.Employee, int, error) {
 	// Defensive programming protocols!!!
 	// Validate and set defaults
 	if page < 1 {
@@ -377,17 +402,43 @@ func (s *EmployeeService) Update(ctx context.Context, e *models.Employee) (*mode
 	return updated, nil
 }
 
-// Delete removes an employee
+// Delete retires an employee and publishes employee.eliminated event
 func (s *EmployeeService) Delete(ctx context.Context, id int64) error {
-	// DELETE is idempotent
-	// And Repository returns nil when no rows affected so no actual reason to check existence
-	err := s.repo.Delete(ctx, id)
+	// Try to fetch employee first (for event data)
+	employee, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		// Check for foreign key violation
-		if strings.Contains(err.Error(), "foreign key violation") {
-			return fmt.Errorf("cannot delete employee with existing relationships")
-		}
-		return fmt.Errorf("failed to delete employee: %w", err)
+		return fmt.Errorf("failed to retrieve employee: %w", err)
 	}
+
+	// If employee does not exist → idempotent success
+	if employee == nil {
+		return nil
+	}
+
+	// If already retired → idempotent success
+	if employee.Status == models.StatusRetired {
+		return nil
+	}
+
+	// Soft delete (set status = RETIRED)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return fmt.Errorf("failed to retire employee: %w", err)
+	}
+
+	// Build event
+	event := messaging.EmployeeDeletedEvent{
+		ID:    employee.ID,
+		Name:  employee.Name,
+		Email: employee.Email,
+	}
+
+	// Publish event (non-blocking / non-transactional)
+	if err := s.publisher.Publish(
+		messaging.EventEmployeeDeleted,
+		event,
+	); err != nil {
+		log.Printf("failed to publish employee.deleted event: %v", err)
+	}
+
 	return nil
 }

@@ -5,8 +5,31 @@ networks:
 volumes:
   postgres_employees_data:
   postgres_departments_data:
+  rabbitmq_data:
 
 services:
+  # ============================================
+  # RABBITMQ (MESSAGE BROKER)
+  # ============================================
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672" # AMQP (for services)
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - onboarding-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # ============================================
   # DATABASE FOR EMPLOYEES SERVICE (Go)
   # ============================================
@@ -41,7 +64,7 @@ services:
       # Server configuration
       SERVER_PORT: 8081
 
-      # Database configuration - INDIVIDUAL VARIABLES (what your Go code expects)
+      # Database configuration
       DB_HOST: database-employees
       DB_PORT: 5432
       DB_NAME: employees_db
@@ -49,10 +72,19 @@ services:
       DB_PASSWORD: postgres
       DB_SSLMODE: disable
 
+      # RabbitMQ
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      RABBITMQ_VHOST: /
+
       # URL for departments service
       DEPARTMENTS_SERVICE_URL: http://departments-service:8082
     depends_on:
       database-employees:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
     networks:
