@@ -103,6 +103,42 @@ Schema: public
 Table: departments
 ```
 
+## Message Broker - RabbitMQ
+
+The system uses RabbitMQ as the message broker to enable asynchronous communication between microservices.
+
+### RabbitMQ Management UI
+
+- URL: http://localhost:15672
+- Username: guest
+- Password: guest
+
+### Why RabbitMQ?
+
+RabbitMQ was selected as the message broker for this project based on the scope, requirements, and educational goals of the system.
+
+Key Reasons:
+
+- Simple to set up with Docker
+- Excellent support for event-based communication
+- Mature ecosystem and documentation
+- Easy integration with Go, Python, TypeScript, and Java
+- Includes a web-based management UI, which is ideal for learning and debugging
+
+### Why not kafka?
+
+Kafka is better suited for high-throughput data pipelines and event streaming.
+For this project, Kafka would be overkill and introduce unnecessary operational complexity.
+
+### Why not Redis Streams?
+
+Redis Streams are powerful but are not primarily designed as a message broker.
+RabbitMQ provides clearer semantics for messaging and event routing.
+
+### Why not NATS?
+
+NATS excels in low-latency, high-performance systems, but RabbitMQ is more suitable for learning event-driven architectures with visibility and control.
+
 ## Tasks
 
 ### Branch rabbit
