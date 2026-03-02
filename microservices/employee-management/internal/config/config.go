@@ -11,14 +11,23 @@ import (
 
 // Config holds configuration loaded from env
 type Config struct {
+	// Server
 	ServerPort string
 
+	// Database
 	DBHost     string
 	DBPort     string
 	DBName     string
 	DBUser     string
 	DBPassword string
 	DBSSLMode  string
+
+	// RabbitMQ
+	RabbitMQHost     string
+	RabbitMQPort     string
+	RabbitMQUser     string
+	RabbitMQPassword string
+	RabbitMQVHost    string
 }
 
 // Load gets the config from env variables
@@ -27,13 +36,23 @@ func Load() *Config {
 	_ = godotenv.Load()
 
 	cfg := &Config{
+		// Server
 		ServerPort: getEnv("SERVER_PORT", "8081"),
+
+		// Database
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5432"),
 		DBName:     getEnv("DB_NAME", ""),
 		DBUser:     getEnv("DB_USER", ""),
 		DBPassword: getEnv("DB_PASSWORD", ""),
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
+
+		// RabbitMQ
+		RabbitMQHost:     getEnv("RABBITMQ_HOST", "localhost"),
+		RabbitMQPort:     getEnv("RABBITMQ_PORT", "5672"),
+		RabbitMQUser:     getEnv("RABBITMQ_USER", "guest"),
+		RabbitMQPassword: getEnv("RABBITMQ_PASSWORD", "guest"),
+		RabbitMQVHost:    getEnv("RABBITMQ_VHOST", "/"),
 	}
 
 	if cfg.DBName == "" || cfg.DBUser == "" {
@@ -53,6 +72,18 @@ func (c *Config) DatabaseURL() string {
 		c.DBPort,
 		c.DBName,
 		c.DBSSLMode,
+	)
+}
+
+// RabbitMQURL builds the AMQP connection string
+func (c *Config) RabbitMQURL() string {
+	return fmt.Sprintf(
+		"amqp://%s:%s@%s:%s%s",
+		c.RabbitMQUser,
+		c.RabbitMQPassword,
+		c.RabbitMQHost,
+		c.RabbitMQPort,
+		c.RabbitMQVHost,
 	)
 }
 
