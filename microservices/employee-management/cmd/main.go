@@ -19,6 +19,7 @@ import (
 	"employee-management/internal/config"
 	"employee-management/internal/db"
 	"employee-management/internal/handlers"
+	"employee-management/internal/messaging"
 	"employee-management/internal/middleware"
 	"employee-management/internal/repository"
 	"employee-management/internal/service"
@@ -36,8 +37,15 @@ func main() {
 	dbPool := db.NewPostgresPool(cfg.DatabaseURL())
 	defer dbPool.Close()
 
+	// RabbitMQ publisher
+	publisher, err := messaging.NewPublisher(cfg.RabbitMQURL())
+	if err != nil {
+		log.Fatalf("failed to connect to RabbitMQ: %v", err)
+	}
+	defer publisher.Close()
+
 	repo := repository.NewEmployeeRepository(dbPool)
-	service := service.NewEmployeeService(repo)
+	service := service.NewEmployeeService(repo, publisher)
 	handler := handlers.NewEmployeeHandler(service)
 
 	// Gin config
