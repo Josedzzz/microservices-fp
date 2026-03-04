@@ -6,6 +6,7 @@ volumes:
   postgres_employees_data:
   postgres_departments_data:
   rabbitmq_data:
+  postgres_notifications_data:
 
 services:
   # ============================================
@@ -132,6 +133,68 @@ services:
       SERVICE_PORT: 8082
     depends_on:
       database-departments:
+        condition: service_healthy
+    networks:
+      - onboarding-network
+    restart: unless-stopped
+
+  # ============================================
+  # DATABASE FOR NOTIFICATIONS SERVICE (Java)
+  # ============================================
+  database-notifications:
+    image: postgres:15-alpine
+    container_name: database-notifications
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: notifications_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_notifications_data:/var/lib/postgresql/data
+    networks:
+      - onboarding-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d notifications_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # NOTIFICATIONS SERVICE (Java/Spring Boot)
+  # ============================================
+  notifications-service:
+    build: ./microservices/notification-service/
+    container_name: notifications-service
+    ports:
+      - "8084:8084" # API rest port
+    environment:
+      # Database configuration
+      DB_HOST: database-notifications
+      DB_PORT: 5432
+      DB_NAME: notifications_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      
+      # RabbitMQ configuration
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      
+      # Spring specific properties
+      SPRING_DATASOURCE_URL: jdbc:postgresql://database-notifications:5432/notifications_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate  # Flyway takes care of migrations
+      
+      # Flyway automatically creates the tables too
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+    depends_on:
+      database-notifications:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - onboarding-network
