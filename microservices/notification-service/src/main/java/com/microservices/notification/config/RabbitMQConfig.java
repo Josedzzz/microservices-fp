@@ -11,16 +11,17 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
     
-    @Value("${rabbitmq.exchange.name:empleados.events}")
+    // Livid documentation
+    @Value("${rabbitmq.exchange.name:employees.events}")
     private String exchangeName;
     
     @Value("${rabbitmq.queue.notifications:notifications.queue}")
     private String queueName;
     
-    @Value("${rabbitmq.routing.key.created:empleado.creado}")
+    @Value("${rabbitmq.routing.key.created:employee.created}")
     private String routingKeyCreated;
     
-    @Value("${rabbitmq.routing.key.deleted:empleado.eliminado}")
+    @Value("${rabbitmq.routing.key.deleted:employee.deleted}")
     private String routingKeyDeleted;
     
     @Bean

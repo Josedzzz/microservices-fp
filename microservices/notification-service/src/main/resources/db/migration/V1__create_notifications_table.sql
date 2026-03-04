@@ -1,11 +1,11 @@
 CREATE TABLE IF NOT EXISTS notifications (
     id VARCHAR(255) PRIMARY KEY,
-    tipo VARCHAR(20) NOT NULL,
-    destinatario VARCHAR(255) NOT NULL,
-    mensaje TEXT NOT NULL,
-    fecha_envio TIMESTAMP NOT NULL,
-    empleado_id VARCHAR(50) NOT NULL
+    type VARCHAR(20) NOT NULL,
+    recipient VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    sent_at TIMESTAMP NOT NULL,
+    employee_id VARCHAR(50) NOT NULL
 );
 
-CREATE INDEX idx_notifications_empleado_id ON notifications(empleado_id);
-CREATE INDEX idx_notifications_fecha_envio ON notifications(fecha_envio);
+CREATE INDEX idx_notifications_employee_id ON notifications(employee_id);
+CREATE INDEX idx_notifications_sent_at ON notifications(sent_at);

@@ -17,22 +17,20 @@ public class Notification {
     
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private NotificationType tipo;
+    private NotificationType type;
     
     @Column(nullable = false)
-    private String destinatario;
+    private String recipient; 
     
     @Column(nullable = false, length = 500)
-    private String mensaje;
+    private String message;
     
     @Column(nullable = false)
-    private LocalDateTime fechaEnvio;
-    
-    @Column(name = "empleado_id", nullable = false)
-    private String empleadoId;
-    
+    private LocalDateTime sentAt;    
+    @Column(name = "employee_id", nullable = false)
+    private String employeeId;    
     @PrePersist
     protected void onCreate() {
-        fechaEnvio = LocalDateTime.now();
+        sentAt = LocalDateTime.now();
     }
 }

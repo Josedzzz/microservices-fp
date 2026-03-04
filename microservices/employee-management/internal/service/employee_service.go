@@ -99,10 +99,12 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 				return ErrNameInvalidFormat
 			}
 		}
+		// TODO Add as an service level error
 		return errors.New("validation failed")
 	}
 
-	// Validate DepartmentID (validator doesn't handle this yet)
+	// Validate DepartmentID (validator doesn't handle this yet).
+	// Should it even handle it?
 	if e.DepartmentID == "" {
 		return ErrDepartmentRequired
 	}
@@ -135,6 +137,8 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 		return errdb
 	}
 
+	log.Print("Attempting to publish event for employee:", e.ID)
+
 	event := messaging.EmployeeCreatedEvent{
 		ID:           e.ID,
 		Name:         e.Name,
@@ -145,11 +149,16 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 		CreatedAt:    e.CreatedAt,
 	}
 
+	log.Printf("Event payload: %+v", event)
+
 	if err := s.publisher.Publish(
 		messaging.EventEmployeeCreated,
 		event,
 	); err != nil {
 		log.Printf("failed to publish employee.created event: %v", err)
+	} else {
+		log.Printf("Event published successfully to exchange: %s, routing key: %s",
+			messaging.EmployeesExchange, messaging.EventEmployeeCreated)
 	}
 
 	return nil
