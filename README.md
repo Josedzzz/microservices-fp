@@ -1,6 +1,6 @@
 # Employee Onboarding & Offboarding System
 
-A microservices-based system for managing employee onboarding and offboarding processes. This project contains two independent microservices that communicate via REST APIs.
+A microservices-based system for managing employee onboarding and offboarding processes. This project contains three independent microservices that communicate via REST APIs and asynchronous messaging.
 
 ## Services Overview
 
@@ -12,12 +12,18 @@ A Go-based service for managing employee records. Each employee is associated wi
 
 A FastAPI-based service for managing departments. Used by the employees service to validate department existence.
 
+### Notifications Service (Java/Spring Boot) - Port 8084
+
+A Spring Boot-based service that listens for employee events (creation/deletion) via RabbitMQ and persists a history of notifications sent to employees.
+
 ## Architecture
 
 The system consists of the following components:
 
 - Employees Service (Go) - Manages employee data on port 8081
 - Departments Service (Python/FastAPI) - Manages department data on port 8082
+- Notifications Service (Java/Spring Boot) - Manages notification history on port 8084
+- RabbitMQ - Message broker for event-driven communication
 - PostgreSQL databases (one for each service)
 - Docker Compose for orchestration
 
@@ -26,6 +32,7 @@ The system consists of the following components:
 - Docker and Docker Compose
 - Go 1.24+ (for local development of employees service)
 - Python 3.11+ (for local development of departments service)
+- Java 17+ (for local development of notifications service)
 - PostgreSQL 15+ (for local development)
 
 ## Quick Start with Docker Compose
@@ -43,7 +50,7 @@ cd microservices-fp
 docker-compose up --build
 ```
 
-This command will build both microservices, create two PostgreSQL databases, set up a network for service communication, and start all containers.
+This command will build the microservices, create the PostgreSQL databases, set up a network for service communication, and start all containers.
 
 Verify the services running:
 
@@ -51,17 +58,21 @@ Verify the services running:
 docker ps
 ```
 
-You should see four containers running:
+You should see seven containers running:
 
 - employees-service
 - departments-service
+- notifications-service
+- rabbitmq
 - database-employees
 - database-departments
+- database-notifications
 
 ## Services API documentation
 
 - Employees Service Swagger UI: http://localhost:8081/swagger/index.html
 - Departments Service Swagger UI: http://localhost:8082/docs
+- Notifications Service Swagger UI: http://localhost:8084/swagger-ui/index.html
 
 ## Stop the services
 
@@ -101,6 +112,18 @@ Password: postgres
 Database: departments_db
 Schema: public
 Table: departments
+```
+
+Notifications Database:
+
+```text
+Host: localhost
+Port: 5434
+User: postgres
+Password: postgres
+Database: notifications_db
+Schema: public
+Table: notifications
 ```
 
 ## Message Broker - RabbitMQ
