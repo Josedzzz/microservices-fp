@@ -171,6 +171,7 @@ Implement rabbitmq with the employee service
 ### Branch notifications
 
 Email sending.
+Paginated response of all the notifications.
 
 ### Branch profiles
 
