@@ -170,7 +170,7 @@ Implement rabbitmq with the employee service
 
 ### Branch notifications
 
-Implement the base of the notification service (Java)
+Email sending.
 
 ### Branch profiles
 
