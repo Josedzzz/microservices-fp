@@ -44,14 +44,14 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.
 	return user, nil
 }
 
-// CreateUser inserts a new user into the db with the given email and role
-func (r *UserRepository) CreateUser(ctx context.Context, email string, role string) error {
+// CreateUser inserts a new user into the db with the given email, hash, role, and status
+func (r *UserRepository) CreateUser(ctx context.Context, email, role, status string) error {
 	query := `
 	INSERT INTO users(email,role,status)
-	VALUES($1,$2,'INACTIVE')
+	VALUES($1,$2,$3)
 	`
 
-	_, err := r.db.ExecContext(ctx, query, email, role)
+	_, err := r.db.ExecContext(ctx, query, email, role, status)
 
 	return err
 }
