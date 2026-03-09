@@ -18,6 +18,7 @@ type Employee struct {
 	ID           int64          `json:"id"`
 	Name         string         `json:"name"`
 	Email        string         `json:"email"`
+	Role         string         `json:"role,omitempty"` // ADMIN or USER
 	DepartmentID string         `json:"departmentID"`
 	Status       EmployeeStatus `json:"status"`
 	HireDate     time.Time      `json:"hireDate"`

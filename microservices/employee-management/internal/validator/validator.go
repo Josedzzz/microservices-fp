@@ -24,7 +24,7 @@ type ValidationError struct {
 	Field   string
 	Code    ValidationErrorCode
 	Message string
-	Value   interface{}
+	Value   any
 }
 
 // ToAPIErrorDetail converts ValidationError to api.ErrorDetail

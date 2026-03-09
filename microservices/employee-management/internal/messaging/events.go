@@ -19,6 +19,7 @@ type EmployeeCreatedEvent struct {
 	ID           int64                 `json:"id"`
 	Name         string                `json:"name"`
 	Email        string                `json:"email"`
+	Role         string                `json:"role"`
 	DepartmentID string                `json:"departmentId"`
 	Status       models.EmployeeStatus `json:"status"`
 	HireDate     time.Time             `json:"hireDate"`

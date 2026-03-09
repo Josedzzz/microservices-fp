@@ -131,6 +131,11 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 	e.Status = models.StatusActive
 	e.HireDate = time.Now()
 
+	// Default values for auth integration
+	if e.Role == "" {
+		e.Role = "USER"
+	}
+
 	// Create in database
 	errdb := s.repo.Create(ctx, e)
 	if errdb != nil {
@@ -143,6 +148,7 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 		ID:           e.ID,
 		Name:         e.Name,
 		Email:        e.Email,
+		Role:         e.Role,
 		DepartmentID: e.DepartmentID,
 		Status:       e.Status,
 		HireDate:     e.HireDate,
