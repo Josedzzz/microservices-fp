@@ -60,7 +60,6 @@ func (c *Consumer) Start() error {
 		return err
 	}
 
-	// 4️⃣ consume
 	msgs, err := c.channel.Consume(
 		queue.Name,
 		"",
@@ -78,7 +77,9 @@ func (c *Consumer) Start() error {
 		for msg := range msgs {
 
 			var payload struct {
-				Email string `json:"email"`
+				Email  string `json:"email"`
+				Role   string `json:"role"`
+				Status string `json:"status"`
 			}
 
 			err := json.Unmarshal(msg.Body, &payload)
@@ -87,7 +88,15 @@ func (c *Consumer) Start() error {
 				continue
 			}
 
-			err = c.service.CreateUser(context.Background(), payload.Email, "EMPLOYEE")
+			// Map employee status to auth status
+			// In this case we use the status given by the broker (ACTIVE, etc.)
+			// or default to ACTIVE if it's the first creation.
+			authStatus := payload.Status
+			if authStatus == "" {
+				authStatus = "ACTIVE"
+			}
+
+			err = c.service.CreateUser(context.Background(), payload.Email, payload.Role, authStatus)
 			if err != nil {
 				log.Println(err)
 			}
