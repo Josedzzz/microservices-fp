@@ -13,8 +13,8 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o auth-server ./cmd
+# Build binary natively for the host architecture
+RUN CGO_ENABLED=0 GOMEMLIMIT=512MiB go build -p 1 -trimpath -ldflags="-s -w" -o auth-server ./cmd
 
 # -------- Runtime stage --------
 FROM alpine:latest
