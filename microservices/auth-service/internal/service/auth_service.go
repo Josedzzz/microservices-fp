@@ -20,9 +20,9 @@ func NewAuthService(repo *repository.UserRepository, jwt *security.JWTManager) *
 	return &AuthService{repo: repo, jwt: jwt}
 }
 
-// CreateUser creates a new user
-func (s *AuthService) CreateUser(ctx context.Context, email string, role string) error {
-	return s.repo.CreateUser(ctx, email, role)
+// CreateUser creates a new user with its email, role, status and password hash
+func (s *AuthService) CreateUser(ctx context.Context, email, role, status string) error {
+	return s.repo.CreateUser(ctx, email, role, status)
 }
 
 // Login authenticates a user by their email and password
