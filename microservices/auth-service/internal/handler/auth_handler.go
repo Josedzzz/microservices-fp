@@ -44,3 +44,28 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"access_token": token,
 	})
 }
+
+// recoverPasswordRequest represents the structure of the password recovery request payload
+type recoverPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// RecoverPassword handles the HTTP POST request for initiating password recovery
+func (h *AuthHandler) RecoverPassword(c *gin.Context) {
+	var req recoverPasswordRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	err := h.service.RecoverPassword(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "recovery email sent if user exists",
+	})
+}

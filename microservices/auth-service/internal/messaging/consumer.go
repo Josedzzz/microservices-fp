@@ -7,18 +7,21 @@ import (
 	"log"
 
 	"github.com/rabbitmq/amqp091-go"
-
-	"auth-service/internal/service"
 )
+
+// AuthService defines the interface for user-related business logic
+type AuthService interface {
+	CreateUser(ctx context.Context, email, role, authStatus string) error
+}
 
 // Consumer is responsible for consuming messages from a RabbitMQ queue
 type Consumer struct {
-	service *service.AuthService
+	service AuthService
 	channel *amqp091.Channel
 }
 
 // NewConsumer creates a new Consumer instance with the provided RabbitMQ channel
-func NewConsumer(ch *amqp091.Channel, service *service.AuthService) *Consumer {
+func NewConsumer(ch *amqp091.Channel, service AuthService) *Consumer {
 	return &Consumer{service: service, channel: ch}
 }
 

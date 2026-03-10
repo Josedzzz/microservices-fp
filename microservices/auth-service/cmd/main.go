@@ -66,7 +66,9 @@ func main() {
 
 	jwtManager := security.NewJWTManager(cfg.JWTSecret)
 
-	authService := service.NewAuthService(repo, jwtManager)
+	producer := messaging.NewProducer(ch)
+
+	authService := service.NewAuthService(repo, jwtManager, producer)
 
 	authHandler := handler.NewAuthHandler(authService)
 
@@ -90,6 +92,7 @@ func main() {
 	auth := router.Group("/auth-service/api")
 	{
 		auth.POST("/login", authHandler.Login)
+		auth.POST("/recover", authHandler.RecoverPassword)
 	}
 
 	log.Println("Auth service running on port 8083")
