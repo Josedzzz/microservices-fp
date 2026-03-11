@@ -16,6 +16,7 @@ func EnsureSchema(db *sql.DB) error {
 		password_hash VARCHAR(255),
 		role VARCHAR(50) NOT NULL,
 		status VARCHAR(20) NOT NULL,
+		recovery_token VARCHAR(255),
 		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 	);

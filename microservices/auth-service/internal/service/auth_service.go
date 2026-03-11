@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"github.com/google/uuid"
@@ -32,6 +33,11 @@ func (s *AuthService) CreateUser(ctx context.Context, email, role, status string
 	}
 
 	token := uuid.New().String()
+	err = s.repo.UpdateRecoveryToken(ctx, email, token)
+	if err != nil {
+		return err
+	}
+
 	return s.producer.PublishRecoverPasswordEvent(ctx, email, token)
 }
 
@@ -64,7 +70,30 @@ func (s *AuthService) RecoverPassword(ctx context.Context, email string) error {
 
 	token := uuid.New().String()
 
+	err = s.repo.UpdateRecoveryToken(ctx, email, token)
+	if err != nil {
+		return err
+	}
+
 	return s.producer.PublishRecoverPasswordEvent(ctx, email, token)
+}
+
+// ResetPasswordWithToken updates the password of a user by verifying their recovery token
+func (s *AuthService) ResetPasswordWithToken(ctx context.Context, email, token, newPassword string) error {
+	hash, err := security.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	err = s.repo.UpdatePasswordWithToken(ctx, email, token, hash)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("invalid email or token")
+		}
+		return err
+	}
+
+	return nil
 }
 
 // ResetPassword updates the password of a user by their email

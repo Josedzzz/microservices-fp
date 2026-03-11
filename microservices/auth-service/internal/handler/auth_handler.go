@@ -69,3 +69,30 @@ func (h *AuthHandler) RecoverPassword(c *gin.Context) {
 		"message": "recovery email sent if user exists",
 	})
 }
+
+// resetPasswordRequest represents the structure of the password reset request payload
+type resetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,email"`
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"`
+}
+
+// ResetPassword handles the HTTP POST request for resetting the password using a token
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req resetPasswordRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	err := h.service.ResetPasswordWithToken(c.Request.Context(), req.Email, req.Token, req.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "password updated successfully",
+	})
+}

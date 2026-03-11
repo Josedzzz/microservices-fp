@@ -93,6 +93,7 @@ func main() {
 	{
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/recover", authHandler.RecoverPassword)
+		auth.POST("/reset", authHandler.ResetPassword)
 	}
 
 	log.Println("Auth service running on port 8083")
