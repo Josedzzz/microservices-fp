@@ -5,6 +5,8 @@ import { z } from "zod";
 
 const router = Router();
 
+// Local middleware removed - security handled by API Gateway
+
 const UpdateProfileSchema = z.object({
   name: z.string().optional(),
   email: z.string().email().optional(),

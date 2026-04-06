@@ -23,10 +23,24 @@ public class RabbitMQConfig {
     
     @Value("${rabbitmq.routing.key.deleted:employee.deleted}")
     private String routingKeyDeleted;
+
+    @Value("${rabbitmq.routing.key.recover:password.recover}")
+    private String routingKeyRecover;
+
+    @Value("${rabbitmq.routing.key.user.created:user.created}")
+    private String routingKeyUserCreated;
+
+    @Value("${rabbitmq.routing.key.user.recovery:user.recovery}")
+    private String routingKeyUserRecovery;
     
     @Bean
     public TopicExchange employeeExchange() {
         return new TopicExchange(exchangeName);
+    }
+
+    @Bean
+    public TopicExchange authExchange() {
+        return new TopicExchange("auth.events");
     }
     
     @Bean
@@ -48,6 +62,30 @@ public class RabbitMQConfig {
                 .bind(notificationsQueue())
                 .to(employeeExchange())
                .with(routingKeyDeleted);
+    }
+
+    @Bean
+    public Binding bindingRecover() {
+        return BindingBuilder
+                .bind(notificationsQueue())
+                .to(authExchange())
+                .with(routingKeyRecover);
+    }
+
+    @Bean
+    public Binding bindingUserCreated() {
+        return BindingBuilder
+                .bind(notificationsQueue())
+                .to(authExchange())
+                .with(routingKeyUserCreated);
+    }
+
+    @Bean
+    public Binding bindingUserRecovery() {
+        return BindingBuilder
+                .bind(notificationsQueue())
+                .to(authExchange())
+                .with(routingKeyUserRecovery);
     }
     
     @Bean

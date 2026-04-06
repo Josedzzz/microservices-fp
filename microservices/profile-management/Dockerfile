@@ -18,6 +18,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/docs ./docs
 
 EXPOSE 8085
 

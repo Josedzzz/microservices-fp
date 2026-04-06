@@ -1,0 +1,90 @@
+openapi: 3.0.0
+info:
+  title: Profile Management API
+  version: 1.0.0
+  description: API for managing user profiles
+
+servers:
+  - url: /profiles-service/profiles
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Profile:
+      type: object
+      properties:
+        id:
+          type: number
+        employeeId:
+          type: string
+        bio:
+          type: string
+        skills:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          type: string
+
+security:
+  - BearerAuth: []
+
+paths:
+  /:
+    get:
+      summary: Get all profiles
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Profile'
+  /{employeeId}:
+    get:
+      summary: Get profile by employee ID
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '404':
+          description: Profile not found
+    put:
+      summary: Update profile
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bio:
+                  type: string
+                skills:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: OK

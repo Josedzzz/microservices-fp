@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -75,13 +76,15 @@ func NewEmployeeService(repo repository.EmployeeRepository, publisher *messaging
 
 // getDepartmentsServiceURL uses a default value
 func getDepartmentsServiceURL() string {
-	// TODO put this in an environment variable eventually
-	url := "http://departments-service:8082"
+	url := os.Getenv("DEPARTMENTS_SERVICE_URL")
+	if url == "" {
+		url = "http://departments-service:8082"
+	}
 	return url
 }
 
 // Create adds a new employee to the database
-func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error {
+func (s *EmployeeService) Create(ctx context.Context, e *models.Employee, authToken string) error {
 	// Validate field formats using "internal/validator"
 	validation := validator.ValidateEmployee(e.Email, e.Name)
 	if !validation.IsValid {
@@ -110,7 +113,7 @@ func (s *EmployeeService) Create(ctx context.Context, e *models.Employee) error 
 	}
 
 	// Check if the department ID exists via HTTP call to the departments service
-	deptExists, err := s.checkDepartmentExistsWithRetry(ctx, e.DepartmentID)
+	deptExists, err := s.checkDepartmentExistsWithRetry(ctx, e.DepartmentID, authToken)
 	if err != nil {
 		return err
 	}
@@ -178,13 +181,13 @@ func (s *EmployeeService) checkEmailExists(ctx context.Context, email string) (b
 	return employee != nil, nil
 }
 
-func (s *EmployeeService) checkDepartmentExistsWithRetry(ctx context.Context, departmentID string) (bool, error) {
+func (s *EmployeeService) checkDepartmentExistsWithRetry(ctx context.Context, departmentID string, authToken string) (bool, error) {
 	const maxRetries = 3
 	backoff := 100 * time.Millisecond
 
 	for attempt := range [maxRetries]int{} {
 		result, err := s.circuitBreaker.Execute(func() (any, error) {
-			return s.checkDepartmentExists(ctx, departmentID)
+			return s.checkDepartmentExists(ctx, departmentID, authToken)
 		})
 
 		if err == nil {
@@ -209,13 +212,16 @@ func (s *EmployeeService) checkDepartmentExistsWithRetry(ctx context.Context, de
 }
 
 // checkDepartmentExists calls the departments microservice (actual HTTP call)
-func (s *EmployeeService) checkDepartmentExists(ctx context.Context, departmentID string) (bool, error) {
+func (s *EmployeeService) checkDepartmentExists(ctx context.Context, departmentID string, authToken string) (bool, error) {
 	url := fmt.Sprintf("%s/departments-service/api/departments/%s", s.departmentsURL, departmentID)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return false, err
 	}
+
+	// Forward the JWT token
+	req.Header.Set("Authorization", "Bearer "+authToken)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -281,7 +287,7 @@ func (s *EmployeeService) FindAll(ctx context.Context, page, pageSize int, filte
 }
 
 // Update updates an employee and returns the updated employee
-func (s *EmployeeService) Update(ctx context.Context, e *models.Employee) (*models.Employee, error) {
+func (s *EmployeeService) Update(ctx context.Context, e *models.Employee, authToken string) (*models.Employee, error) {
 	log.Printf("UPDATE - Request received: ID=%d, Name='%s', Email='%s', Dept='%s', Status='%s'",
 		e.ID, e.Name, e.Email, e.DepartmentID, e.Status)
 
@@ -383,7 +389,7 @@ func (s *EmployeeService) Update(ctx context.Context, e *models.Employee) (*mode
 
 	if deptChanged {
 		log.Printf("UPDATE - Checking if department '%s' exists", e.DepartmentID)
-		deptExists, err := s.checkDepartmentExistsWithRetry(ctx, e.DepartmentID)
+		deptExists, err := s.checkDepartmentExistsWithRetry(ctx, e.DepartmentID, authToken)
 		if err != nil {
 			log.Printf("UPDATE - Department check error: %v", err)
 			return nil, err

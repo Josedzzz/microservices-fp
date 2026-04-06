@@ -26,6 +26,16 @@ type loginRequest struct {
 }
 
 // Login handles the HTTP POST request for user login
+//
+//	@Summary		User login
+//	@Description	Receives credentials and returns a JWT
+//	@Tags			Auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		loginRequest	true	"Login credentials"
+//	@Success		200		{object}	map[string]string	"Successful login"
+//	@Failure		401		{object}	map[string]string	"Invalid credentials"
+//	@Router			/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req loginRequest
 
@@ -51,6 +61,16 @@ type recoverPasswordRequest struct {
 }
 
 // RecoverPassword handles the HTTP POST request for initiating password recovery
+//
+//	@Summary		Password recovery
+//	@Description	Initiates the process of account recovery by receiving an email
+//	@Tags			Auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		recoverPasswordRequest	true	"Recovery email"
+//	@Success		200		{object}	map[string]string		"Recovery process initiated"
+//	@Failure		400		{object}	map[string]string		"Invalid request"
+//	@Router			/recover-password [post]
 func (h *AuthHandler) RecoverPassword(c *gin.Context) {
 	var req recoverPasswordRequest
 
@@ -78,6 +98,16 @@ type resetPasswordRequest struct {
 }
 
 // ResetPassword handles the HTTP POST request for resetting the password using a token
+//
+//	@Summary		Reset password
+//	@Description	Receives the recovery token and new password to update it in the database
+//	@Tags			Auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		resetPasswordRequest	true	"New password data"
+//	@Success		200		{object}	map[string]string		"Password updated successfully"
+//	@Failure		400		{object}	map[string]string		"Invalid token or request"
+//	@Router			/reset-password [post]
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var req resetPasswordRequest
 

@@ -7,6 +7,7 @@ import lombok.ToString;
 
 @Data
 @ToString
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class EmployeeEventDTO {
     
     private String id;
@@ -16,4 +17,5 @@ public class EmployeeEventDTO {
     private String status;
     private String hireDate;
     private String createdAt;
+    private String token; // For security events
 }
