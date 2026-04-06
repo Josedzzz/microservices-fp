@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"employee-management/internal/api"
@@ -42,6 +43,7 @@ func NewEmployeeHandler(s *service.EmployeeService) *EmployeeHandler {
 //	@Failure		409			{object}	api.ErrorResponse	"Email already exists"
 //	@Failure		503			{object}	api.ErrorResponse	"Departments service unavailable"
 //	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Security		BearerAuth
 //	@Router			/employees [post]
 func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 	var req models.Employee
@@ -50,8 +52,16 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 		api.BadRequest(c, "invalid JSON format")
 		return
 	}
+
+	// Extract token from Authorization header
+	authHeader := c.GetHeader("Authorization")
+	tokenStr := ""
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
+	}
+
 	// Call service to handle business logic
-	if err := h.service.Create(c.Request.Context(), &req); err != nil {
+	if err := h.service.Create(c.Request.Context(), &req, tokenStr); err != nil {
 		switch {
 		case errors.Is(err, service.ErrDepartmentRequired),
 			errors.Is(err, service.ErrNameRequired),
@@ -88,6 +98,7 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 //	@Failure		400	{object}	api.ErrorResponse	"Invalid ID format"
 //	@Failure		404	{object}	api.ErrorResponse	"Employee not found"
 //	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
+//	@Security		BearerAuth
 //	@Router			/employees/{id} [get]
 func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 	idParam := c.Param("id")
@@ -127,6 +138,7 @@ func (h *EmployeeHandler) GetEmployeeByID(c *gin.Context) {
 //	@Success		200			{object}	api.PaginatedResponse
 //	@Failure		400			{object}	api.ErrorResponse	"Invalid query parameters"
 //	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Security		BearerAuth
 //	@Router			/employees [get]
 func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 	var query api.PaginationQuery
@@ -189,6 +201,7 @@ func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 //	@Failure		404			{object}	api.ErrorResponse	"Employee not found"
 //	@Failure		409			{object}	api.ErrorResponse	"Email already exists"
 //	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Security		BearerAuth
 //	@Router			/employees/{id} [put]
 func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 	idParam := c.Param("id")
@@ -207,9 +220,16 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 		return
 	}
 
+	// Extract token from Authorization header
+	authHeader := c.GetHeader("Authorization")
+	tokenStr := ""
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
+	}
+
 	req.ID = id
 
-	updatedEmployee, err := h.service.Update(c.Request.Context(), &req)
+	updatedEmployee, err := h.service.Update(c.Request.Context(), &req, tokenStr)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrEmployeeNotFound):
@@ -237,6 +257,7 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 //	@Failure		400	{object}	api.ErrorResponse	"Invalid ID format"
 //	@Failure		404	{object}	api.ErrorResponse	"Employee not found"
 //	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
+//	@Security		BearerAuth
 //	@Router			/employees/{id} [delete]
 func (h *EmployeeHandler) DeleteEmployee(c *gin.Context) {
 	idParam := c.Param("id")

@@ -9,7 +9,12 @@ package main
 //	@contact.email	josed.amayar@uqvirtual.edu.co
 
 //	@host		localhost:8081
-//	@BasePath	/employees-service/api
+//	@BasePath	/api
+
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
+//	@description				Type "Bearer " followed by a valid JWT token.
 
 import (
 	"log"
@@ -24,7 +29,7 @@ import (
 	"employee-management/internal/repository"
 	"employee-management/internal/service"
 
-	_ "employee-management/docs" // <-- Swagger docs (IMPORTANT)
+	_ "employee-management/docs" // <-- Swagger docs
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -37,7 +42,6 @@ func main() {
 	dbPool := db.NewPostgresPool(cfg.DatabaseURL())
 	defer dbPool.Close()
 
-	// RabbitMQ publisher
 	publisher, err := messaging.NewPublisher(cfg.RabbitMQURL())
 	if err != nil {
 		log.Fatalf("failed to connect to RabbitMQ: %v", err)
@@ -48,20 +52,16 @@ func main() {
 	service := service.NewEmployeeService(repo, publisher)
 	handler := handlers.NewEmployeeHandler(service)
 
-	// Gin config
-	gin.SetMode(gin.ReleaseMode) // Change mode for development
+	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
-	// Trusted proxies
 	router.SetTrustedProxies([]string{"127.0.0.1"})
 
-	// Middleware
 	router.Use(middleware.Recovery())
 	router.Use(middleware.ErrorHandler())
 	router.Use(gin.Logger())
-	router.Use(gin.Recovery()) // Recovery fallback
+	router.Use(gin.Recovery())
 
-	// Global handlers
 	router.NoRoute(func(c *gin.Context) {
 		api.NotFound(c, "Resource not found")
 	})
@@ -70,28 +70,31 @@ func main() {
 		api.Error(c, http.StatusMethodNotAllowed, "Method not allowed")
 	})
 
-	apiGroup := router.Group("/employees-service/api")
+	// Swagger (Prefix-blind)
+	// Using a relative path allows the browser to find the YAML regardless of the Gateway prefix
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.URL("../api/swagger.yaml")))
+	router.StaticFile("/api/swagger.yaml", "./docs/swagger.yaml")
+
+	// API Routes (Prefix-blind)
+	apiGroup := router.Group("/api")
 	{
-		// Health
 		apiGroup.GET("/health", handlers.HealthCheck)
 
-		// Swagger
-		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
-		// Employee routes
-		employees := apiGroup.Group("/employees")
+		// Apply AuthMiddleware to all protected routes
+		protected := apiGroup.Group("/", middleware.AuthMiddleware())
 		{
-			employees.POST("/", handler.CreateEmployee)
-			employees.GET("/:id", handler.GetEmployeeByID)
-			employees.GET("/", handler.GetAllEmployees)
-			employees.PUT("/:id", handler.UpdateEmployee)
-			employees.DELETE("/:id", handler.DeleteEmployee)
+			employees := protected.Group("/employees")
+			{
+				employees.POST("/", handler.CreateEmployee)
+				employees.GET("/:id", handler.GetEmployeeByID)
+				employees.GET("/", handler.GetAllEmployees)
+				employees.PUT("/:id", handler.UpdateEmployee)
+				employees.DELETE("/:id", handler.DeleteEmployee)
+			}
 		}
 	}
 
 	log.Printf("Employee service running on :%s", cfg.ServerPort)
-	log.Printf("Swagger UI available at http://localhost:%s/swagger/index.html", cfg.ServerPort)
-
 	if err := router.Run(":" + cfg.ServerPort); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

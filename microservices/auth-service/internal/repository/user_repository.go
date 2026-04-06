@@ -113,11 +113,11 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, email, hash string)
 	return err
 }
 
-// DisableUser sets the status of a user identified by their email to DISABLED
+// DisableUser sets the status of a user identified by their email to DISABLED and clears recovery tokens
 func (r *UserRepository) DisableUser(ctx context.Context, email string) error {
 	query := `
 	UPDATE users
-	SET status='DISABLED'
+	SET status='DISABLED', recovery_token=NULL
 	WHERE email=$1
 	`
 

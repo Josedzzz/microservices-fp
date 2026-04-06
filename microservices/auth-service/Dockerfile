@@ -24,8 +24,9 @@ WORKDIR /app
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Copy binary from builder
+# Copy binary and docs from builder
 COPY --from=builder /app/auth-server .
+COPY --from=builder /app/docs ./docs
 
 # Change ownership
 RUN chown -R appuser:appgroup /app

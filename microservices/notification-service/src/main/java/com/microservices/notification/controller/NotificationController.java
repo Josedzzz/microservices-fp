@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
@@ -23,6 +24,7 @@ import java.util.List;
 @RequestMapping("/notifications")
 @RequiredArgsConstructor
 @Tag(name = "Notifications", description = "API to query sent notifications")
+@SecurityRequirement(name = "BearerAuth")
 public class NotificationController {
     
     private final NotificationRepository notificationRepository;

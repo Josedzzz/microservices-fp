@@ -60,73 +60,86 @@ Verify the services running:
 docker ps
 ```
 
-You should see **nine** containers running:
+You should see **twelve** containers running:
 
-- employees-service
-- departments-service
-- notifications-service
-- profiles-service
-- rabbitmq
-- database-employees
-- database-departments
-- database-notifications
-- database-profiles
+- **api-gateway**: Central entry point (Port 8000)
+- **auth-service**: Identity provider
+- **employees-service**: Core employee logic
+- **departments-service**: Department management
+- **notifications-service**: Event-driven notifications
+- **profiles-service**: User profiles
+- **rabbitmq**: Message broker
+- **database-auth**: Auth data
+- **database-employees**: Employee data
+- **database-departments**: Department data
+- **database-notifications**: Notification data
+- **database-profiles**: Profile data
 
 ## Services API documentation
 
-- **Employees Service Swagger UI**: http://localhost:8081/swagger/index.html
-- **Departments Service Swagger UI**: http://localhost:8082/docs
-- **Notifications Service Swagger UI**: http://localhost:8084/swagger-ui/index.html
-- **Profiles Service API**: http://localhost:8085/profiles (GET /profiles, GET /profiles/{employeeId}, PUT /profiles/{employeeId})
+All documentation is accessible both directly (for development) and through the API Gateway:
 
-## Stop the services
+### Directly (Localhost)
+- **Auth Service**: http://localhost:8083/swagger/index.html
+- **Employees Service**: http://localhost:8081/swagger/index.html
+- **Departments Service**: http://localhost:8082/docs
+- **Notifications Service**: http://localhost:8084/swagger-ui/index.html
+- **Profiles Service**: http://localhost:8085/swagger
 
+### Through API Gateway (Port 8000)
+- **Employees Docs**: http://localhost:8000/employees-service/swagger/index.html
+- **Departments Docs**: http://localhost:8000/departments-service/docs
+- **Notifications Docs**: http://localhost:8000/notifications-service/swagger-ui/index.html
+- **Profiles Docs**: http://localhost:8000/profiles-service/swagger
+
+---
+
+## Token Instructions & Usage Examples
+
+### 1. Login (Public)
+The Gateway proxies the `/auth-service` directly.
 ```bash
-docker-compose down
+curl -X POST http://localhost:8000/auth-service/api/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@onboarding.com",
+    "password": "admin123"
+  }'
+```
+*Expected Response: JSON with `access_token`.*
+
+### 2. Protected Endpoint (Read-only for USER, Total for ADMIN)
+```bash
+# Get all employees
+curl -X GET http://localhost:8000/employees-service/api/employees \
+  -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
 ```
 
-To also remove the volumes (database data):
-
+### 3. Admin-Only Endpoint (Write operations)
 ```bash
-docker-compose down -v
+# Create a new department (Requires ADMIN role in JWT)
+curl -X POST http://localhost:8000/departments-service/api/departments \
+  -H "Authorization: Bearer <ADMIN_JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Engineering",
+    "description": "Technical team"
+  }'
+```
+*Note: If a USER attempts this, the Gateway will return `403 Forbidden`.*
+
+### 4. Password Recovery (Public)
+```bash
+curl -X POST http://localhost:8000/auth-service/api/recover-password \
+  -H "Content-Type: application/json" \
+  -d '{"email": "juan@empresa.com"}'
 ```
 
-## Database Connections
+---
 
-You can connect to the databases using any PostgreSQL client (like Beekeeper Studio).
-
-**Employees Database:**
-- Port: 5432 | DB: `employees_db`
-
-**Departments Database:**
-- Port: 5433 | DB: `departments_db`
-
-**Notifications Database:**
-- Port: 5434 | DB: `notifications_db`
-
-**Profiles Database:**
-- Port: 5435 | DB: `profiles_db`
-- User: `postgres` | Password: `postgres`
-
-## Message Broker - RabbitMQ
-
-The system uses RabbitMQ as the message broker to enable asynchronous communication between microservices.
-
-### RabbitMQ Management UI
-- URL: http://localhost:15672
-- Username: `guest`
-- Password: `guest`
-
-### Why RabbitMQ?
-RabbitMQ was selected for its mature ecosystem, excellent support for event-based communication, and ease of integration with Go, Python, TypeScript, and Java.
-
-## Tasks
-
-### Branch rabbit
-Implement rabbitmq with the employee service.
-
-### Branch notifications
-Email sending and paginated response of all notifications.
-
-### Branch profiles
-Implement the Profile Management service (TypeScript/Express) with hybrid sync/async communication.
+#### Security Flow:
+1. **Bootstrap Admin:** A seed admin is created automatically (`admin@onboarding.com` / `admin123`).
+2. **Gateway Entrance:** All traffic enters through `http://localhost:8000`. The Gateway validates the JWT signature and checks the expiration.
+3. **Onboarding:** Create an employee via `POST http://localhost:8000/employees-service/api/employees`.
+4. **Activation:** Use the token from the logs to set a password via `POST http://localhost:8000/auth-service/api/reset-password`.
+5. **RBAC:** The Gateway enforces: `ADMIN` role required for POST/PUT/DELETE. `USER` role has read-only (GET) access.

@@ -1,0 +1,131 @@
+basePath: /auth-service/api
+definitions:
+  handler.loginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  handler.recoverPasswordRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  handler.resetPasswordRequest:
+    properties:
+      email:
+        type: string
+      new_password:
+        minLength: 6
+        type: string
+      token:
+        type: string
+    required:
+    - email
+    - new_password
+    - token
+    type: object
+host: ""
+info:
+  contact:
+    email: josed.amayar@uqvirtual.edu.co
+    name: API Support
+  description: API for authentication and user management
+  title: Auth Service API
+  version: "1.0.1"
+paths:
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Receives credentials and returns a JWT
+      parameters:
+      - description: Login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful login
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Invalid credentials
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: User login
+      tags:
+      - Auth
+  /recover-password:
+    post:
+      consumes:
+      - application/json
+      description: Initiates the process of account recovery by receiving an email
+      parameters:
+      - description: Recovery email
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.recoverPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Recovery process initiated
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Password recovery
+      tags:
+      - Auth
+  /reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Receives the recovery token and new password to update it in the
+        database
+      parameters:
+      - description: New password data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.resetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password updated successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid token or request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reset password
+      tags:
+      - Auth
+swagger: "2.0"

@@ -33,13 +33,7 @@ public class NotificationService {
             log.debug("Processing event: {}", event);
             log.debug("Processing event - checking routingKey: {}", routingKey);
 
-            // Validaciones (como returns de error en Go)
-            if (event.getId() == null) {
-                throw new InvalidEventDataException("employee ID is required");
-            }
-            if (event.getName() == null) {
-                throw new InvalidEventDataException("employee name is required");
-            }
+            // Validaciones
             if (event.getEmail() == null) {
                 throw new InvalidEventDataException("employee email is required");
             }
@@ -51,6 +45,10 @@ public class NotificationService {
                 handleEmployeeCreated(event);
             } else if ("employee.deleted".equals(effectiveRoutingKey)) {
                 handleEmployeeDeleted(event);
+            } else if ("password.recover".equals(effectiveRoutingKey) || 
+                       "user.created".equals(effectiveRoutingKey) || 
+                       "user.recovery".equals(effectiveRoutingKey)) {
+                handlePasswordRecover(event);
             } else {
                 log.warn("Unknown routing key for event: {}", effectiveRoutingKey);
             }
@@ -64,16 +62,23 @@ public class NotificationService {
     }
     
     private void handleEmployeeCreated(EmployeeEventDTO event) {
-        String message = String.format("Welcome %s! Your account has been successfully created.", 
-                                      event.getName());
-        saveNotification(NotificationType.WELCOME, event.getEmail(), message, event.getId());
+        String name = event.getName() != null ? event.getName() : "Employee";
+        String message = String.format("Welcome %s! Your account has been successfully created.", name);
+        saveNotification(NotificationType.WELCOME, event.getEmail(), message, event.getId() != null ? event.getId() : "N/A");
     }
 
     private void handleEmployeeDeleted(EmployeeEventDTO event) {
-        String message = String.format("Hello %s, your account has been deactivated.", 
-                                      event.getName());
-        saveNotification(NotificationType.TERMINATION, event.getEmail(), message, event.getId());
-    }    
+        String name = event.getName() != null ? event.getName() : "Employee";
+        String message = String.format("Hello %s, your account has been deactivated.", name);
+        saveNotification(NotificationType.TERMINATION, event.getEmail(), message, event.getId() != null ? event.getId() : "N/A");
+    }
+
+    private void handlePasswordRecover(EmployeeEventDTO event) {
+        String message = String.format("To reset your password, use the following token: %s", event.getToken());
+        log.info("[NOTIFICACIÓN] Tipo: SEGURIDAD | Para: {} | Mensaje: {}", event.getEmail(), message);
+        saveNotification(NotificationType.SECURITY, event.getEmail(), message, event.getId() != null ? event.getId() : "N/A");
+    }
+
     private void saveNotification(NotificationType type, String email, String message, String employeeId) {
         try {
             Notification notification = new Notification();
@@ -91,18 +96,23 @@ public class NotificationService {
     }
     
     private String determineRoutingKey(EmployeeEventDTO event, String routingKey) {
-        // 1. Prefer header if available and valid
-        if (routingKey != null && (routingKey.equals("employee.created") || routingKey.equals("employee.deleted"))) {
-            return routingKey;
+        if (routingKey != null) {
+            if (routingKey.equals("employee.created") || 
+                routingKey.equals("employee.deleted") || 
+                routingKey.equals("password.recover") ||
+                routingKey.equals("user.created") ||
+                routingKey.equals("user.recovery")) {
+                return routingKey;
+            }
         }
         
-        // 2. Fallback to payload inspection
-        // Created events have more fields like createdAt, status, or hireDate
+        if (event.getToken() != null) {
+            return "password.recover";
+        }
         if (event.getCreatedAt() != null && !event.getCreatedAt().isEmpty()) {
             return "employee.created";
         }
         
-        // If it's not a 'created' event, we assume 'deleted' (or default to it)
         return "employee.deleted";
     }
 }

@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html
 from sqlalchemy.orm import Session
 from typing import List
 from contextlib import asynccontextmanager
 
-from app import crud, models, schemas
+from app import crud, models, schemas, auth
 from app.database import SessionLocal, engine
 
 # Create database tables
@@ -23,8 +24,37 @@ app = FastAPI(
     title="Departments Service",
     description="Microservice for managing departments",
     version="1.0.0",
-    lifespan=lifespan
+    openapi_url=None,
+    docs_url=None,
+    lifespan=lifespan,
+    swagger_ui_parameters={"persistAuthorization": True},
+    openapi_tags=[{"name": "Departments", "description": "Operations with departments"}],
 )
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    from fastapi.openapi.docs import get_swagger_ui_html
+    html = get_swagger_ui_html(
+        openapi_url="./openapi.json",
+        title=app.title + " - Swagger UI",
+        oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+    )
+    # Force the URL to be relative in the HTML content
+    body = html.body.decode("utf-8").replace("url: '/openapi.json'", "url: './openapi.json'")
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=body)
+
+@app.get("/openapi.json", include_in_schema=False)
+async def get_open_api_endpoint():
+    from fastapi.openapi.utils import get_openapi
+    return get_openapi(
+        title=app.title, 
+        version=app.version, 
+        routes=app.routes,
+        servers=[{"url": "/departments-service", "description": "API Gateway"}]
+    )
 
 # Dependency to get DB session
 def get_db():
@@ -53,29 +83,7 @@ async def http_exception_handler(_: Request, exc: HTTPException):
         content=error_response.model_dump()
     )
 
-# Custom exception handler for validation errors
-from fastapi.exceptions import RequestValidationError
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(_: Request, exc: RequestValidationError):
-    error_details = [
-        models.ErrorDetail(
-            loc=error.get("loc", []),
-            msg=error.get("msg", ""),
-            type=error.get("type", "")
-        )
-        for error in exc.errors()
-    ]
-    error_response = models.ErrorResponse(
-        code="422",
-        message="Validation error",
-        details=error_details
-    )
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=error_response.model_dump()
-    )
-
-@app.get("/departments-service/api/")
+@app.get("/api/")
 async def root():
     return {
         "service": "Departments Service",
@@ -88,11 +96,12 @@ async def root():
     }
 
 @app.post(
-    "/departments-service/api/departments",
+    "/api/departments",
     response_model=schemas.DepartmentResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new department",
-    description="Creates a new department with the provided information"
+    description="Creates a new department with the provided information",
+    dependencies=[Depends(auth.security)]
 )
 async def create_department(
     department: schemas.DepartmentCreate,
@@ -105,10 +114,11 @@ async def create_department(
     }
 
 @app.get(
-    "/departments-service/api/departments/{department_id}",
+    "/api/departments/{department_id}",
     response_model=schemas.DepartmentResponse,
     summary="Get department by ID",
-    description="Retrieves a specific department by its ID"
+    description="Retrieves a specific department by its ID",
+    dependencies=[Depends(auth.security)]
 )
 async def get_department(
     department_id: str,
@@ -126,10 +136,11 @@ async def get_department(
     }
 
 @app.get(
-    "/departments-service/api/departments",
+    "/api/departments",
     response_model=List[schemas.Department],
     summary="List all departments",
-    description="Retrieves a list of all departments"
+    description="Retrieves a list of all departments",
+    dependencies=[Depends(auth.security)]
 )
 async def get_departments(
     skip: int = 0,

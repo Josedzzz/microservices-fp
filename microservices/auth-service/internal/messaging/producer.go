@@ -18,15 +18,25 @@ func NewProducer(ch *amqp091.Channel) *Producer {
 	return &Producer{channel: ch}
 }
 
-// RecoverPasswordPayload represents the data for the password recovery event
-type RecoverPasswordPayload struct {
+// UserEventPayload represents the data for auth-related user events
+type UserEventPayload struct {
 	Email string `json:"email"`
 	Token string `json:"token"`
 }
 
-// PublishRecoverPasswordEvent publishes a recover password event to the "auth.events" exchange
-func (p *Producer) PublishRecoverPasswordEvent(ctx context.Context, email, token string) error {
-	payload := RecoverPasswordPayload{
+// PublishUserCreatedEvent publishes a user.created event when a new user is onboarded
+func (p *Producer) PublishUserCreatedEvent(ctx context.Context, email, token string) error {
+	return p.publishAuthEvent(ctx, "user.created", email, token)
+}
+
+// PublishUserRecoveryEvent publishes a user.recovery event when password recovery is requested
+func (p *Producer) PublishUserRecoveryEvent(ctx context.Context, email, token string) error {
+	return p.publishAuthEvent(ctx, "user.recovery", email, token)
+}
+
+// publishAuthEvent is a helper to publish events to the "auth.events" exchange
+func (p *Producer) publishAuthEvent(ctx context.Context, routingKey, email, token string) error {
+	payload := UserEventPayload{
 		Email: email,
 		Token: token,
 	}
@@ -36,7 +46,7 @@ func (p *Producer) PublishRecoverPasswordEvent(ctx context.Context, email, token
 		return err
 	}
 
-	// We'll declare the exchange here to ensure it exists
+	// Ensure the exchange exists
 	err = p.channel.ExchangeDeclare(
 		"auth.events", // name
 		"topic",       // type
@@ -52,13 +62,18 @@ func (p *Producer) PublishRecoverPasswordEvent(ctx context.Context, email, token
 
 	return p.channel.PublishWithContext(
 		ctx,
-		"auth.events",      // exchange
-		"password.recover", // routing key
-		false,              // mandatory
-		false,              // immediate
+		"auth.events", // exchange
+		routingKey,    // routing key
+		false,         // mandatory
+		false,         // immediate
 		amqp091.Publishing{
 			ContentType: "application/json",
 			Body:        body,
 		},
 	)
+}
+
+// PublishRecoverPasswordEvent (DEPRECATED) kept for compatibility during transition if needed
+func (p *Producer) PublishRecoverPasswordEvent(ctx context.Context, email, token string) error {
+	return p.publishAuthEvent(ctx, "password.recover", email, token)
 }

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microservices Ecosystem | API Gateway</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --text: #1e293b;
+            --card-bg: #ffffff;
+        }
+        body { 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            line-height: 1.6; 
+            color: var(--text); 
+            max-width: 900px; 
+            margin: 0 auto; 
+            padding: 3rem 1rem; 
+            background: var(--bg); 
+        }
+        header { text-align: center; margin-bottom: 3rem; }
+        h1 { font-size: 2.5rem; color: #0f172a; margin-bottom: 0.5rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+        .card { 
+            background: var(--card-bg); 
+            padding: 1.5rem; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); 
+            border: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s;
+        }
+        .card:hover { transform: translateY(-4px); }
+        .card-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem; }
+        .service-name { font-weight: 700; font-size: 1.1rem; }
+        .tag { font-size: 0.7rem; font-weight: 800; padding: 0.25rem 0.6rem; border-radius: 9999px; text-transform: uppercase; }
+        .tag-go { background: #e0f2fe; color: #0369a1; }
+        .tag-py { background: #fef9c3; color: #854d0e; }
+        .tag-java { background: #fee2e2; color: #991b1b; }
+        .tag-node { background: #f0fdf4; color: #166534; }
+        .desc { color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem; flex-grow: 1; }
+        .btn { 
+            background: var(--primary); 
+            color: white; 
+            padding: 0.6rem; 
+            text-decoration: none; 
+            border-radius: 6px; 
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        footer { margin-top: 4rem; text-align: center; font-size: 0.8rem; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Service Directory</h1>
+        <p>Centralized gateway for the Microservices Ecosystem</p>
+    </header>
+    
+    <div class="grid">
+        <!-- Auth Service -->
+        <div class="card">
+            <div class="card-header">
+                <span class="service-name">Auth Service</span>
+                <span class="tag tag-go">Go</span>
+            </div>
+            <p class="desc">Identity provider, user management, and JWT token issuance.</p>
+            <a href="/auth-service/swagger/index.html" class="btn">Explore API Docs</a>
+        </div>
+
+        <!-- Employee Service -->
+        <div class="card">
+            <div class="card-header">
+                <span class="service-name">Employee Management</span>
+                <span class="tag tag-go">Go</span>
+            </div>
+            <p class="desc">Core business logic for employee CRUD and lifecycle.</p>
+            <a href="/employees-service/swagger/index.html" class="btn">Explore API Docs</a>
+        </div>
+
+        <!-- Department Service -->
+        <div class="card">
+            <div class="card-header">
+                <span class="service-name">Department Management</span>
+                <span class="tag tag-py">Python</span>
+            </div>
+            <p class="desc">Organizational structure and department validation logic.</p>
+            <a href="/departments-service/docs" class="btn">Explore API Docs</a>
+        </div>
+
+        <!-- Notification Service -->
+        <div class="card">
+            <div class="card-header">
+                <span class="service-name">Notification Service</span>
+                <span class="tag tag-java">Java</span>
+            </div>
+            <p class="desc">Asynchronous event processing and notification history.</p>
+            <a href="/notifications-service/swagger-ui/index.html" class="btn">Explore API Docs</a>
+        </div>
+
+        <!-- Profile Service -->
+        <div class="card">
+            <div class="card-header">
+                <span class="service-name">Profile Management</span>
+                <span class="tag tag-node">Node.js</span>
+            </div>
+            <p class="desc">Extended employee profile data and social features.</p>
+            <a href="/profiles-service/swagger" class="btn">Explore API Docs</a>
+        </div>
+    </div>
+
+    <footer>
+        System Status: <span style="color: #10b981;">running on faith</span>
+    </footer>
+</body>
+</html>
