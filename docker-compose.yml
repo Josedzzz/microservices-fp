@@ -348,3 +348,18 @@ services:
     networks:
       - onboarding-network
     restart: unless-stopped
+
+  # ============================================
+  # BDD TESTS (Cucumber)
+  # ============================================
+  bdd-tests:
+    build: ./e2e-tests/
+    container_name: bdd-tests
+    environment:
+      BASE_URL: http://api-gateway:8080
+      JWT_SECRET: supersecretkey
+    depends_on:
+      api-gateway:
+        condition: service_started
+    networks:
+      - onboarding-network
