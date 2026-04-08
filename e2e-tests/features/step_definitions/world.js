@@ -1,9 +1,9 @@
-import { setWorldConstructor } from '@cucumber/cucumber';
-import axios from 'axios';
+import { setWorldConstructor } from "@cucumber/cucumber";
+import axios from "axios";
 
 class CustomWorld {
   constructor() {
-    this.baseUrl = process.env.BASE_URL || 'http://localhost:8000';
+    this.baseUrl = process.env.BASE_URL || "http://localhost:8000";
     this.token = null;
     this.response = null;
   }
@@ -18,10 +18,10 @@ class CustomWorld {
   async http(method, path, data = null) {
     const url = `${this.baseUrl}${path}`;
     const headers = {};
-    
+
     // Add Authorization header if a token is available
     if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+      headers["Authorization"] = `Bearer ${this.token}`;
     }
 
     try {
