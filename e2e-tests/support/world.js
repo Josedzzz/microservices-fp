@@ -1,26 +1,26 @@
-const { setWorldConstructor, World } = require('@cucumber/cucumber');
-const axios = require('axios');
+import { setWorldConstructor, World } from '@cucumber/cucumber';
+import axios from 'axios';
 
 class CustomWorld extends World {
   constructor(options) {
     super(options);
     
-    // Configuración Base
+    // Base configuration
     this.baseUrl = process.env.BASE_URL || 'http://localhost:8080';
     
-    // Estado de la sesión
+    // Session state
     this.token = null;
-    this.lastResponse = null;
+    this.response = null; // Matches teammate's naming convention
     this.lastError = null;
     
-    // Datos temporales para limpieza
+    // Temporary data for cleanup
     this.tempData = {
       employeeId: null,
       email: null
     };
   }
 
-  // Helper para hacer peticiones HTTP con Axios
+  // Helper to perform HTTP requests
   async http(method, path, data = null, headers = {}) {
     const config = {
       method: method.toLowerCase(),
@@ -29,7 +29,7 @@ class CustomWorld extends World {
         'Content-Type': 'application/json',
         ...headers
       },
-      validateStatus: () => true // No lanzar error en 4xx/5xx para poder validarlos en BDD
+      validateStatus: () => true // Don't throw on 4xx/5xx
     };
 
     if (this.token) {
@@ -41,11 +41,12 @@ class CustomWorld extends World {
     }
 
     try {
-      this.lastResponse = await axios(config);
-      return this.lastResponse;
+      this.response = await axios(config);
+      return this.response;
     } catch (error) {
+      this.response = error.response;
       this.lastError = error;
-      throw error;
+      return this.response;
     }
   }
 }
