@@ -12,10 +12,12 @@ Feature: Employee Offboarding Flow
       | Jane Doe   | jane.doe@example.com | DEPT-IT      |
     And eventually a "SECURITY" notification should exist for current employee
     
-    # Action: Delete the employee
+    # Action: Delete the employee (Soft-delete/Deactivation)
     When I delete the current employee
     Then the response status code should be 204
     
-    # Asynchronous part: Wait for the system to process the revocation
-    # Then verify they can no longer login
-    Then eventually the current employee should not be able to login
+    # Verify via Admin API
+    Then eventually the current employee status should be "RETIRED"
+
+    # Final Validation: Access should be blocked
+    And eventually the current employee should not be able to login

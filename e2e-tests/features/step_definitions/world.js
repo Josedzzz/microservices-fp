@@ -1,5 +1,8 @@
-import { setWorldConstructor, World } from '@cucumber/cucumber';
+import { setWorldConstructor, World, setDefaultTimeout } from '@cucumber/cucumber';
 import axios from 'axios';
+
+// Increase timeout for polling operations (eventual consistency)
+setDefaultTimeout(60 * 1000);
 
 class CustomWorld extends World {
   constructor(options) {
@@ -10,26 +13,33 @@ class CustomWorld extends World {
     
     // Session state
     this.token = null;
-    this.response = null; // Matches teammate's naming convention
+    this.response = null; 
     this.lastError = null;
     
     // Temporary data for cleanup
     this.tempData = {
       employeeId: null,
-      email: null
+      email: null,
+      resetToken: null
     };
   }
 
-  // Helper to perform HTTP requests
-  async http(method, path, data = null, headers = {}) {
+  /**
+   * Helper to perform HTTP requests
+   * @param {string} method 
+   * @param {string} path 
+   * @param {object} data 
+   * @param {object} options - { headers: {}, saveResponse: true }
+   */
+  async http(method, path, data = null, options = { saveResponse: true }) {
     const config = {
       method: method.toLowerCase(),
       url: `${this.baseUrl}${path}`,
       headers: {
         'Content-Type': 'application/json',
-        ...headers
+        ...(options.headers || {})
       },
-      validateStatus: () => true // Don't throw on 4xx/5xx
+      validateStatus: () => true 
     };
 
     if (this.token) {
@@ -41,12 +51,21 @@ class CustomWorld extends World {
     }
 
     try {
-      this.response = await axios(config);
-      return this.response;
+      const res = await axios(config);
+      if (options.saveResponse !== false) {
+        this.response = res;
+      }
+      return res;
     } catch (error) {
-      this.response = error.response;
+      const errRes = error.response || { 
+        status: 500, 
+        data: { error: `Connection failed: ${error.message}` } 
+      };
+      if (options.saveResponse !== false) {
+        this.response = errRes;
+      }
       this.lastError = error;
-      return this.response;
+      return errRes;
     }
   }
 }

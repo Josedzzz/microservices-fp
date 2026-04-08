@@ -18,3 +18,12 @@ Feature: Employee Onboarding Flow
     When I login with the current employee credentials and password "newPassword123"
     Then the response status code should be 200
     And the response body should contain "access_token"
+
+  @onboarding @negative
+  Scenario: Fail to create an employee with non-existent department
+    Given that I am authenticated as a user with role "ADMIN"
+    When I create a new employee with the following details:
+      | name       | email                | departmentID |
+      | Ghost User | ghost@example.com    | NON-EXISTENT |
+    Then the response status code should be 400
+    And the response body should contain "department ID does not exists"
