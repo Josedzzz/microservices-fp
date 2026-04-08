@@ -1,8 +1,8 @@
-import { When, Given } from "@cucumber/cucumber";
+import { When, Then, Given } from "@cucumber/cucumber";
 import jwt from "jsonwebtoken";
 
 Given(
-  "that I am authenticated as a user with role {string}",
+  "que estoy autenticado con el rol {string}",
   async function (role) {
     this.token = null;
     this.response = null;
@@ -33,7 +33,7 @@ Given(
 );
 
 When(
-  "I make a {string} request to {string} without a token",
+  "realizo una petición {string} a {string} sin un token",
   async function (method, path) {
     const originalToken = this.token;
     this.token = null;
@@ -43,8 +43,8 @@ When(
 );
 
 When(
-  "I make a {string} request to {string} with a valid employee",
-  async function (method, path) {
+  "realizo una creación de empleado con datos válidos",
+  async function () {
     const deptId = `DEPT-${Date.now()}`;
     await this.http("POST", "/departments-service/api/departments", {
       id: deptId,
@@ -56,10 +56,14 @@ When(
       email: `security-${Date.now()}@example.com`,
       departmentID: deptId,
     };
-    await this.http(method, path, employee);
+    await this.http("POST", "/employees-service/api/employees/", employee);
   },
 );
 
-When("I make a {string} request to {string}", async function (method, path) {
+When("realizo una petición {string} a {string}", async function (method, path) {
   await this.http(method, path);
+});
+
+Given("que el sistema está desplegado y operativo", async function () {
+  await this.http("GET", "/", null, { saveResponse: false });
 });

@@ -1,7 +1,7 @@
 import { setWorldConstructor, World, setDefaultTimeout } from '@cucumber/cucumber';
 import axios from 'axios';
 
-// Increase timeout for polling operations (eventual consistency)
+// Polling operations time! 
 setDefaultTimeout(60 * 1000);
 
 class CustomWorld extends World {

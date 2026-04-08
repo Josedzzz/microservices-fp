@@ -2,16 +2,13 @@ import { When, Then } from '@cucumber/cucumber';
 import { expect } from 'chai';
 import { waitUntil } from './polling.js';
 
-When('I create a new employee with the following details:', async function (dataTable) {
+When('registro un nuevo empleado con los siguientes datos:', async function (dataTable) {
   const data = dataTable.hashes()[0];
   const uniqueId = Date.now();
-  
-  // 1. Generate unique email
   const [user, domain] = data.email.split('@');
   const uniqueEmail = `${user}+${uniqueId}@${domain}`;
   this.tempData.email = uniqueEmail;
 
-  // 2. Solution 1: Dynamic ID for negative cases
   const targetDeptId = data.departmentID === 'NON-EXISTENT' 
     ? `INVALID-DEPT-${uniqueId}` 
     : data.departmentID;
@@ -19,27 +16,24 @@ When('I create a new employee with the following details:', async function (data
   const employeeData = { ...data, email: uniqueEmail, departmentID: targetDeptId };
   
   if (data.departmentID !== 'NON-EXISTENT') {
-    // Ensure department exists for positive cases
     await this.http('POST', '/departments-service/api/departments', {
       id: targetDeptId,
       name: 'Test Dept'
     }, { saveResponse: false });
   }
   
-  // 3. Main action
-  await this.http('POST', '/employees-service/api/employees/', employeeData);
-  
-  if (this.response.status === 201) {
-    this.tempData.employeeId = this.response.data.id;
+  const response = await this.http('POST', '/employees-service/api/employees/', employeeData);
+  if (response.status === 201) {
+    this.tempData.employeeId = response.data.id;
   }
 });
 
-When('I delete the current employee', async function () {
+When('elimino al empleado actual', async function () {
   const id = this.tempData.employeeId;
   await this.http('DELETE', `/employees-service/api/employees/${id}`);
 });
 
-Then('eventually the current employee should not be able to login', async function () {
+Then('eventualmente el empleado actual no debe poder iniciar sesión', async function () {
   await waitUntil(async () => {
     await this.http('POST', '/auth-service/api/login', {
       email: this.tempData.email,
@@ -53,7 +47,7 @@ Then('eventually the current employee should not be able to login', async functi
   });
 });
 
-Then('eventually the current employee status should be {string}', async function (expectedStatus) {
+Then('eventualmente el estado del empleado actual debe ser {string}', async function (expectedStatus) {
   const id = this.tempData.employeeId;
   await waitUntil(async () => {
     await this.http('GET', `/employees-service/api/employees/${id}`, null, { saveResponse: true });
@@ -65,7 +59,7 @@ Then('eventually the current employee status should be {string}', async function
   });
 });
 
-Then('eventually a {string} notification should exist for current employee', async function (type) {
+Then('eventualmente debe existir una notificación de tipo {string} para el empleado actual', async function (type) {
   const email = this.tempData.email;
   const searchType = type === 'SECURITY' || type === 'WELCOME' ? type : type.toUpperCase();
   
@@ -96,18 +90,18 @@ Then('eventually a {string} notification should exist for current employee', asy
   });
 });
 
-When('I login with the current employee credentials and password {string}', async function (password) {
+When('intento hacer login con las credenciales del empleado actual y contraseña {string}', async function (password) {
   await this.http('POST', '/auth-service/api/login', {
     email: this.tempData.email,
     password
   });
 });
 
-Then('the response status code should be {int}', function (code) {
+Then('el código de estado de la respuesta debe ser {int}', function (code) {
   expect(this.response.status).to.equal(code);
 });
 
-Then('the response body should contain {string}', function (text) {
+Then('el cuerpo de la respuesta debe contener {string}', function (text) {
   const body = typeof this.response.data === 'string' 
     ? this.response.data 
     : JSON.stringify(this.response.data);

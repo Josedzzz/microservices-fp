@@ -1,23 +1,24 @@
-Feature: Employee Offboarding Flow
-  As a system administrator
-  I want to remove employees from the system
-  So their access is revoked and they can no longer login
+# language: es
+Característica: Flujo de Offboarding de Empleados
+  Como administrador del sistema
+  Quiero eliminar empleados del sistema
+  Para que su acceso sea revocado y ya no puedan iniciar sesión
 
   @offboarding @async
-  Scenario: Successful removal and access revocation of an employee
-    # Setup: Create and activate an employee first
-    Given that I am authenticated as a user with role "ADMIN"
-    And I create a new employee with the following details:
+  Escenario: Eliminación exitosa y revocación de acceso de un empleado
+    # Preparación: Crear y activar un empleado primero
+    Dado que estoy autenticado con el rol "ADMIN"
+    Y registro un nuevo empleado con los siguientes datos:
       | name       | email                | departmentID |
       | Jane Doe   | jane.doe@example.com | DEPT-IT      |
-    And eventually a "SECURITY" notification should exist for current employee
+    Y eventualmente debe existir una notificación de tipo "SECURITY" para el empleado actual
     
-    # Action: Delete the employee (Soft-delete/Deactivation)
-    When I delete the current employee
-    Then the response status code should be 204
+    # Acción: Eliminar al empleado (Soft-delete)
+    Cuando elimino al empleado actual
+    Entonces el código de estado de la respuesta debe ser 204
     
-    # Verify via Admin API
-    Then eventually the current employee status should be "RETIRED"
+    # Verificación administrativa del estado
+    Y eventualmente el estado del empleado actual debe ser "RETIRED"
 
-    # Final Validation: Access should be blocked
-    And eventually the current employee should not be able to login
+    # Validación Final: El acceso debe estar bloqueado
+    Y eventualmente el empleado actual no debe poder iniciar sesión

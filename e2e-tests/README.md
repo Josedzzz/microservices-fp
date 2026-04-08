@@ -46,3 +46,8 @@ npx cucumber-js features/onboarding.feature
 
 ## Polling Configuration
 For asynchronous events (RabbitMQ), we have configured a polling system with a maximum of **15 attempts** every **2 seconds** (Total 30s). This time is sufficient for the Auth and Notifications services to process messages in a development environment.
+
+## Future Enhancements (Feedback)
+Based on academic feedback, a future goal for this suite is to improve the **readability of .feature files**. 
+- **Goal**: Make Gherkin scenarios even more accessible to non-technical stakeholders (business owners, HR managers).
+- **Approach**: Shift from technical language (e.g., "GET request", "status code 200") to pure business language (e.g., "When I check the service directory", "Then the system should be ready").

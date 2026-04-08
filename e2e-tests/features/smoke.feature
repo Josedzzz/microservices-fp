@@ -1,10 +1,11 @@
-Feature: Initial system verification (Smoke)
-  As a test developer
-  I want to verify that the Gateway responds correctly
-  To ensure the testing infrastructure is ready
+# language: es
+Característica: Verificación inicial del sistema (Humo)
+  Como desarrollador de pruebas
+  Quiero verificar que el Gateway responde correctamente
+  Para asegurar que la infraestructura de pruebas está lista
 
   @smoke
-  Scenario: The Gateway is operational and shows the directory
-    When I make a "GET" request to "/"
-    Then the response status code should be 200
-    And the response body should contain "Service Directory"
+  Escenario: El Gateway está operativo y muestra el directorio
+    Cuando realizo una petición "GET" a "/"
+    Entonces el código de estado de la respuesta debe ser 200
+    Y el cuerpo de la respuesta debe contener "Service Directory"

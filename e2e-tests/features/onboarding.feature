@@ -1,29 +1,30 @@
-Feature: Employee Onboarding Flow
-  As a system administrator
-  I want to register new employees
-  So they can eventually access the system with their own credentials
+# language: es
+Característica: Flujo de Onboarding de Empleados
+  Como administrador del sistema
+  Quiero registrar nuevos empleados
+  Para que eventualmente puedan acceder al sistema con sus credenciales
 
   @onboarding @async
-  Scenario: Successful full onboarding of a new employee
-    Given that I am authenticated as a user with role "ADMIN"
-    When I create a new employee with the following details:
+  Escenario: Onboarding completo y exitoso de un nuevo empleado
+    Dado que estoy autenticado con el rol "ADMIN"
+    Cuando registro un nuevo empleado con los siguientes datos:
       | name       | email                | departmentID |
       | John BDD   | john.bdd@example.com | DEPT-IT      |
-    Then the response status code should be 201
+    Entonces el código de estado de la respuesta debe ser 201
     
-    # Asynchronous part: Waiting for RabbitMQ and other services
-    And eventually a "SECURITY" notification should exist for current employee
+    # Parte asíncrona: Esperando a RabbitMQ
+    Y eventualmente debe existir una notificación de tipo "SECURITY" para el empleado actual
     
-    # Final validation: Access
-    When I login with the current employee credentials and password "newPassword123"
-    Then the response status code should be 200
-    And the response body should contain "access_token"
+    # Validación final: Acceso
+    Cuando intento hacer login con las credenciales del empleado actual y contraseña "newPassword123"
+    Entonces el código de estado de la respuesta debe ser 200
+    Y el cuerpo de la respuesta debe contener "access_token"
 
   @onboarding @negative
-  Scenario: Fail to create an employee with non-existent department
-    Given that I am authenticated as a user with role "ADMIN"
-    When I create a new employee with the following details:
-      | name       | email                | departmentID |
-      | Ghost User | ghost@example.com    | NON-EXISTENT |
-    Then the response status code should be 400
-    And the response body should contain "department ID does not exists"
+  Escenario: Error al crear un empleado con departamento inexistente
+    Dado que estoy autenticado con el rol "ADMIN"
+    Cuando registro un nuevo empleado con los siguientes datos:
+      | name       | email             | departmentID |
+      | Ghost User | ghost@example.com | NON-EXISTENT |
+    Entonces el código de estado de la respuesta debe ser 400
+    Y el cuerpo de la respuesta debe contener "department ID does not exists"
