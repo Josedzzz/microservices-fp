@@ -350,7 +350,7 @@ services:
     restart: unless-stopped
 
   # ============================================
-  # BDD TESTS (Cucumber)
+  # BDD END-TO-END TESTS (Challenge 5)
   # ============================================
   bdd-tests:
     build: ./e2e-tests/
@@ -361,5 +361,11 @@ services:
     depends_on:
       api-gateway:
         condition: service_started
+      auth-service:
+        condition: service_started
+      employees-service:
+        condition: service_started
     networks:
       - onboarding-network
+    # Run once and exit. Use 'docker-compose run bdd-tests' to execute.
+    profiles: ["test"]
