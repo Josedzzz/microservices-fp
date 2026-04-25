@@ -5,15 +5,19 @@ A microservices-based system for managing employee onboarding and offboarding pr
 ## Services Overview
 
 ### Employees Service (Go) - Port 8081
+
 A Go-based service for managing employee records. Each employee is associated with a department.
 
 ### Departments Service (Python/FastAPI) - Port 8082
+
 A FastAPI-based service for managing departments. Used by the employees service to validate department existence.
 
 ### Notifications Service (Java/Spring Boot) - Port 8084
+
 A Spring Boot-based service that listens for employee events (creation/deletion) via RabbitMQ and persists a history of notifications sent to employees.
 
 ### Profile Management Service (TypeScript/Express) - Port 8085
+
 A TypeScript-based service that combines asynchronous and synchronous communication. It consumes `employee.created` events to automatically create profiles and exposes REST endpoints for querying and updating them.
 
 ## Architecture
@@ -80,6 +84,7 @@ You should see **twelve** containers running:
 All documentation is accessible both directly (for development) and through the API Gateway:
 
 ### Directly (Localhost)
+
 - **Auth Service**: http://localhost:8083/swagger/index.html
 - **Employees Service**: http://localhost:8081/swagger/index.html
 - **Departments Service**: http://localhost:8082/docs
@@ -87,6 +92,7 @@ All documentation is accessible both directly (for development) and through the 
 - **Profiles Service**: http://localhost:8085/swagger
 
 ### Through API Gateway (Port 8000)
+
 - **Employees Docs**: http://localhost:8000/employees-service/swagger/index.html
 - **Departments Docs**: http://localhost:8000/departments-service/docs
 - **Notifications Docs**: http://localhost:8000/notifications-service/swagger-ui/index.html
@@ -97,7 +103,9 @@ All documentation is accessible both directly (for development) and through the 
 ## Token Instructions & Usage Examples
 
 ### 1. Login (Public)
+
 The Gateway proxies the `/auth-service` directly.
+
 ```bash
 curl -X POST http://localhost:8000/auth-service/api/login \
   -H "Content-Type: application/json" \
@@ -106,9 +114,11 @@ curl -X POST http://localhost:8000/auth-service/api/login \
     "password": "admin123"
   }'
 ```
-*Expected Response: JSON with `access_token`.*
+
+_Expected Response: JSON with `access_token`._
 
 ### 2. Protected Endpoint (Read-only for USER, Total for ADMIN)
+
 ```bash
 # Get all employees
 curl -X GET http://localhost:8000/employees-service/api/employees \
@@ -116,6 +126,7 @@ curl -X GET http://localhost:8000/employees-service/api/employees \
 ```
 
 ### 3. Admin-Only Endpoint (Write operations)
+
 ```bash
 # Create a new department (Requires ADMIN role in JWT)
 curl -X POST http://localhost:8000/departments-service/api/departments \
@@ -126,9 +137,11 @@ curl -X POST http://localhost:8000/departments-service/api/departments \
     "description": "Technical team"
   }'
 ```
-*Note: If a USER attempts this, the Gateway will return `403 Forbidden`.*
+
+_Note: If a USER attempts this, the Gateway will return `403 Forbidden`._
 
 ### 4. Password Recovery (Public)
+
 ```bash
 curl -X POST http://localhost:8000/auth-service/api/recover-password \
   -H "Content-Type: application/json" \
@@ -138,8 +151,60 @@ curl -X POST http://localhost:8000/auth-service/api/recover-password \
 ---
 
 #### Security Flow:
+
 1. **Bootstrap Admin:** A seed admin is created automatically (`admin@onboarding.com` / `admin123`).
 2. **Gateway Entrance:** All traffic enters through `http://localhost:8000`. The Gateway validates the JWT signature and checks the expiration.
 3. **Onboarding:** Create an employee via `POST http://localhost:8000/employees-service/api/employees`.
 4. **Activation:** Use the token from the logs to set a password via `POST http://localhost:8000/auth-service/api/reset-password`.
 5. **RBAC:** The Gateway enforces: `ADMIN` role required for POST/PUT/DELETE. `USER` role has read-only (GET) access.
+
+## CI/CD TODO – Jenkins Integration
+
+### 1. Jenkins Setup (Dockerized)
+
+- [ ] Create `jenkins/Dockerfile`
+- [ ] Install plugins (pipeline, git, docker, JCasC, sonar)
+- [ ] Install Docker CLI
+- [ ] Add Jenkins to `docker-compose` (port 9090, docker.sock, volume)
+- [ ] Verify Jenkins and Docker commands
+
+### 2. First Pipeline (Build & Test)
+
+- [ ] Create `Jenkinsfile`
+- [ ] Add stages: Checkout, Build, Test
+- [ ] Generate coverage
+- [ ] Use JCasC or similar for auto configuration
+
+### 3. SonarQube Integration
+
+- [ ] Add SonarQube + Postgres to `docker-compose`
+- [ ] Configure project and token
+- [ ] Add SonarQube + Quality Gate stages
+- [ ] Enforce coverage >= 70%
+
+### 4. Docker Packaging & E2E
+
+- [ ] Build Docker image in pipeline
+- [ ] Tag with `BUILD_NUMBER` and `latest`
+- [ ] Run `docker-compose up` for full system
+- [ ] Execute BDD tests
+- [ ] Cleanup with `docker-compose down`
+
+### 5. Multi-Service Pipelines
+
+- [ ] Add `Jenkinsfile` to second microservice
+- [ ] Use a different language
+- [ ] Ensure independent pipelines
+
+### 6. Reproducibility & Failure Testing
+
+- [ ] Run pipeline multiple times
+- [ ] Simulate failures (tests, coverage, docker, E2E)
+- [ ] Ensure pipeline fails in correct stage
+
+### 7. Documentation
+
+- [ ] Explain CI setup
+- [ ] Jenkins access and usage
+- [ ] Pipeline stages explanation
+- [ ] Add screenshots
