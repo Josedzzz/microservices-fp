@@ -9,6 +9,7 @@ volumes:
   postgres_notifications_data:
   postgres_profiles_data:
   postgres_auth_data:
+  jenkins_data:
 
 services:
   # ============================================
@@ -369,3 +370,22 @@ services:
       - onboarding-network
     # Run once and exit. Use 'docker-compose run bdd-tests' to execute.
     profiles: ["test"]
+
+  # ============================================
+  # JENKINS (CI/CD)
+  # ============================================
+  jenkins:
+    build:
+      context: ./jenkins
+    container_name: jenkins
+    restart: unless-stopped
+    ports:
+      - "9090:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+    networks:
+      - onboarding-network
