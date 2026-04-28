@@ -1,0 +1,22 @@
+jenkins:
+  systemMessage: "Jenkins configured automatically via JCasC"
+
+jobs:
+  - script: >
+      pipelineJob('notification-service-pipeline') {
+        description('Build/Test pipeline for microservices/notification-service')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/Josedzzz/microservices-fp.git')
+                }
+                branch('main')
+              }
+            }
+            scriptPath('microservices/notification-service/Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }
