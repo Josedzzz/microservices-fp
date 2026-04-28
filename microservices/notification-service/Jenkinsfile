@@ -1,0 +1,53 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            agent {
+                docker {
+                    image 'maven:3.9-eclipse-temurin-17'
+                    args '-v maven_cache:/root/.m2'
+                    reuseNode true
+                }
+            }
+            steps {
+                dir('microservices/notification-service') {
+                    sh 'mvn -B -DskipTests clean package'
+                }
+            }
+        }
+
+        stage('Test') {
+            agent {
+                docker {
+                    image 'maven:3.9-eclipse-temurin-17'
+                    args '-v maven_cache:/root/.m2'
+                    reuseNode true
+                }
+            }
+            steps {
+                dir('microservices/notification-service') {
+                    sh '''
+                      mvn -B \
+                        org.jacoco:jacoco-maven-plugin:0.8.12:prepare-agent \
+                        test \
+                        org.jacoco:jacoco-maven-plugin:0.8.12:report
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            junit testResults: 'microservices/notification-service/target/surefire-reports/*.xml', allowEmptyResults: true
+            archiveArtifacts artifacts: 'microservices/notification-service/target/site/jacoco/**', allowEmptyArchive: true
+        }
+    }
+}
