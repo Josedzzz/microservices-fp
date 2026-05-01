@@ -11,6 +11,10 @@ volumes:
   postgres_notifications_data:
   postgres_profiles_data:
   postgres_auth_data:
+  sonar_db_data:
+  sonarqube_data:
+  sonarqube_logs:
+  sonarqube_extensions:
   jenkins_data:
   maven_cache:
 
@@ -373,6 +377,49 @@ services:
       - onboarding-network
     # Run once and exit. Use 'docker-compose run bdd-tests' to execute.
     profiles: ["test"]
+
+  # ============================================
+  # SONARQUBE DATABASE (POSTGRES 16)
+  # ============================================
+  sonar-db:
+    image: postgres:16-alpine
+    container_name: sonar-db
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar
+      POSTGRES_DB: sonarqube
+    volumes:
+      - sonar_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonarqube"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ============================================
+  # SONARQUBE (LTS COMMUNITY)
+  # ============================================
+  sonarqube:
+    image: sonarqube:lts-community
+    container_name: sonarqube
+    depends_on:
+      sonar-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonarqube
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+    networks:
+      - microservices-network
+    restart: unless-stopped
 
   # ============================================
   # JENKINS (CI/CD)

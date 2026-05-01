@@ -1,6 +1,15 @@
 jenkins:
   systemMessage: "Jenkins configured automatically via JCasC"
 
+unclassified:
+  sonarGlobalConfiguration:
+    installations:
+      - name: "SonarQube"
+        serverUrl: "http://sonarqube:9000"
+        triggers:
+          skipScmCause: false
+          skipUpstreamCause: false
+
 jobs:
   - script: >
       pipelineJob('notification-service-pipeline') {
