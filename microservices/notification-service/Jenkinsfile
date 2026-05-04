@@ -184,6 +184,9 @@ pipeline {
                   fi
                 }
 
+                for container in rabbitmq database-employees database-departments database-notifications database-profiles database-auth api-gateway notifications-service employees-service departments-service profiles-service auth-service; do
+                  docker rm -f "$container" 2>/dev/null || true
+                done
                 docker container prune -f --filter "label!=keep=true" >/dev/null 2>&1 || true
                 run_compose --project-name "${CI_PROJECT}" --profile test up -d --build \
                   rabbitmq \
