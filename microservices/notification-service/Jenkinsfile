@@ -48,53 +48,57 @@ pipeline {
         }
 
         stage('Quality Gate') {
-            steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    dir("${SERVICE_DIR}") {
-                        sh '''
-                        set -e
-                        CE_TASK_URL=$(grep ceTaskUrl .scannerwork/report-task.txt | cut -d= -f2-)
-                        
-                        echo "Checking SonarQube Task Status..."
-                        
-                        for i in $(seq 1 20); do
-                            RESPONSE=$(curl -s -u "$SONAR_TOKEN:" "$CE_TASK_URL")
-                            STATUS=$(echo $RESPONSE | jq -r '.task.status')
-                            
-                            if [ "$STATUS" = "SUCCESS" ]; then 
-                                ANALYSIS_ID=$(echo $RESPONSE | jq -r '.task.analysisId')
-                                break 
-                            fi
-                            
-                            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then 
-                                echo "SonarQube Task failed or was canceled."
-                                exit 1 
-                            fi
-                            
-                            echo "Waiting for SonarQube to process report... ($i/20)"
-                            sleep 5
-                        done
+    steps {
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            dir("${SERVICE_DIR}") {
+                sh '''
+                set -e
+                # Use the full workspace path to ensure we find the file
+                REPORT_FILE="${WORKSPACE}/${SERVICE_DIR}/.scannerwork/report-task.txt"
+                
+                if [ ! -f "$REPORT_FILE" ]; then
+                    echo "Error: report-task.txt not found at $REPORT_FILE"
+                    exit 1
+                fi
 
-                        echo "Fetching Quality Gate result for Analysis ID: $ANALYSIS_ID"
-                        QG_STATUS=$(curl -s -u "$SONAR_TOKEN:" "http://sonarqube:9000/api/qualitygates/project_status?analysisId=$ANALYSIS_ID" | jq -r '.projectStatus.status')
+                CE_TASK_URL=$(grep ceTaskUrl "$REPORT_FILE" | cut -d= -f2-)
+                
+                echo "Checking SonarQube Task Status at: $CE_TASK_URL"
+                
+                for i in $(seq 1 20); do
+                    RESPONSE=$(curl -s -u "$SONAR_TOKEN:" "$CE_TASK_URL")
+                    STATUS=$(echo $RESPONSE | jq -r '.task.status')
+                    
+                    if [ "$STATUS" = "SUCCESS" ]; then 
+                        ANALYSIS_ID=$(echo $RESPONSE | jq -r '.task.analysisId')
+                        break 
+                    fi
+                    
+                    if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then 
+                        echo "SonarQube Task failed or was canceled."
+                        exit 1 
+                    fi
+                    
+                    echo "Waiting for SonarQube to process report... ($i/20)"
+                    sleep 5
+                done
 
-                        echo "Quality Gate Status: $QG_STATUS"
-                        
-                        if [ "$QG_STATUS" = "ERROR" ] || [ "$QG_STATUS" = "WARN" ]; then
-                            echo "Quality Gate Failed! (Status: $QG_STATUS)"
-                            exit 1
-                        elif [ "$QG_STATUS" = "OK" ]; then
-                            echo "Quality Gate Passed!"
-                        else
-                            echo "Unknown Quality Gate status: $QG_STATUS"
-                            exit 1
-                        fi
-                        '''
-                    }
-                }
+                QG_STATUS=$(curl -s -u "$SONAR_TOKEN:" "http://sonarqube:9000/api/qualitygates/project_status?analysisId=$ANALYSIS_ID" | jq -r '.projectStatus.status')
+
+                echo "Quality Gate Status: $QG_STATUS"
+                
+                if [ "$QG_STATUS" = "ERROR" ] || [ "$QG_STATUS" = "WARN" ]; then
+                    echo "Quality Gate Failed! (Status: $QG_STATUS)"
+                    exit 1
+                elif [ "$QG_STATUS" = "OK" ]; then
+                    echo "Quality Gate Passed!"
+                fi
+                '''
             }
         }
-    } // <--- THIS WAS THE MISSING BRACE CLOSING 'STAGES'
+    }
+}
+    } 
 
     post {
         always {
