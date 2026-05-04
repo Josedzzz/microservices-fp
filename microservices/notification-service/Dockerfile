@@ -10,11 +10,11 @@ COPY src ./src
 RUN mvn -B -DskipTests clean package
 
 # -------- Runtime stage --------
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN groupadd --system spring && useradd --system --gid spring spring
 
 COPY --from=build /app/target/notification-service-*.jar /app/app.jar
 
