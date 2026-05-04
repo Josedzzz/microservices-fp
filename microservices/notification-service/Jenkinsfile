@@ -1,9 +1,13 @@
 pipeline {
     agent any
+    options {
+        skipDefaultCheckout(true)
+    }
 
     environment {
+        SERVICE_NAME = 'notification-service'
         SERVICE_DIR = 'microservices/notification-service'
-        DOCKER_NET  = 'microservices-fp_microservices-network'
+        DOCKER_NET = 'microservices-fp_microservices-network'
     }
 
     stages {
@@ -13,12 +17,24 @@ pipeline {
             }
         }
 
-        stage('Build & Test') {
+        stage('Build') {
             steps {
                 script {
                     docker.image('maven:3.9.6-eclipse-temurin-17').inside("-v /var/jenkins_home/.m2:/root/.m2 --network ${DOCKER_NET}") {
                         dir("${SERVICE_DIR}") {
-                            sh 'mvn -B clean verify'
+                            sh 'mvn -B clean package -DskipTests'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                script {
+                    docker.image('maven:3.9.6-eclipse-temurin-17').inside("-v /var/jenkins_home/.m2:/root/.m2 --network ${DOCKER_NET}") {
+                        dir("${SERVICE_DIR}") {
+                            sh 'mvn -B verify'
                         }
                     }
                 }
@@ -56,6 +72,68 @@ pipeline {
                 }
             }
         }
+
+        stage('Package & Publish') {
+            steps {
+                sh '''
+                docker compose up -d registry
+
+                docker build \
+                  -t "localhost:5000/${SERVICE_NAME}:${BUILD_NUMBER}" \
+                  -t "localhost:5000/${SERVICE_NAME}:latest" \
+                  "${SERVICE_DIR}"
+
+                docker push "localhost:5000/${SERVICE_NAME}:${BUILD_NUMBER}"
+                docker push "localhost:5000/${SERVICE_NAME}:latest"
+                '''
+            }
+        }
+
+        stage('E2E Tests') {
+            steps {
+                sh '''
+                set -e
+                CI_PROJECT="ci-${BUILD_NUMBER}"
+                COMPOSE_CMD="docker compose -p ${CI_PROJECT}"
+
+                ${COMPOSE_CMD} --profile test up -d --build \
+                  rabbitmq \
+                  database-employees employees-service \
+                  database-departments departments-service \
+                  database-notifications notifications-service \
+                  database-profiles profiles-service \
+                  database-auth auth-service \
+                  api-gateway
+
+                NET="${CI_PROJECT}_onboarding-network"
+
+                wait_for_http() {
+                  name="$1"
+                  url="$2"
+                  max_tries="${3:-60}"
+                  echo "Waiting for ${name} at ${url}"
+                  for i in $(seq 1 "${max_tries}"); do
+                    if docker run --rm --network "${NET}" curlimages/curl:8.10.1 -fsS "${url}" >/dev/null 2>&1; then
+                      echo "${name} is ready"
+                      return 0
+                    fi
+                    sleep 5
+                  done
+                  echo "Timeout waiting for ${name} (${url})"
+                  return 1
+                }
+
+                wait_for_http "API Gateway" "http://api-gateway:8080/"
+                wait_for_http "Auth Service" "http://auth-service:8083/api/swagger.yaml"
+                wait_for_http "Employees Service" "http://employees-service:8081/api/health"
+                wait_for_http "Departments Service" "http://departments-service:8082/api/"
+                wait_for_http "Notifications Service" "http://notifications-service:8084/v3/api-docs"
+                wait_for_http "Profiles Service" "http://profiles-service:8085/health"
+
+                ${COMPOSE_CMD} --profile test run --rm bdd-tests
+                '''
+            }
+        }
     }
 
     post {
@@ -64,12 +142,16 @@ pipeline {
                 junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
                 archiveArtifacts artifacts: 'target/site/jacoco/**,target/*.jar', allowEmptyArchive: true
             }
+            sh '''
+            CI_PROJECT="ci-${BUILD_NUMBER}"
+            docker compose -p "${CI_PROJECT}" down -v --remove-orphans || true
+            '''
         }
         success {
             echo 'Pipeline completed successfully!'
         }
         failure {
-            echo 'Pipeline failed. Check the SonarQube logs or Quality Gate status.'
+            echo 'Pipeline failed. Check stage logs for details.'
         }
     }
 }

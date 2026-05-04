@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOMEMLIMIT=512MiB go build -p 1 -trimpath -ldflags="-s -w" -o auth-server ./cmd
 
 # -------- Runtime stage --------
-FROM alpine:latest
+FROM alpine:3.20
 
 WORKDIR /app
 

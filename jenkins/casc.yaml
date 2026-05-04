@@ -29,3 +29,21 @@ jobs:
           }
         }
       }
+  - script: >
+      pipelineJob('auth-service-pipeline') {
+        description('Build/Test/Sonar/Package pipeline for microservices/auth-service')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/Josedzzz/microservices-fp.git')
+                }
+                branch('main')
+              }
+            }
+            scriptPath('microservices/auth-service/Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }

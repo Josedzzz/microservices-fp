@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+    options {
+        skipDefaultCheckout(true)
+    }
+
+    environment {
+        SERVICE_NAME = 'auth-service'
+        SERVICE_DIR = 'microservices/auth-service'
+        DOCKER_NET = 'microservices-fp_microservices-network'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    docker.image('golang:1.25-alpine').inside("-v /var/jenkins_home/go-pkg:/go/pkg/mod -v /var/jenkins_home/go-build:/root/.cache/go-build --network ${DOCKER_NET}") {
+                        dir("${SERVICE_DIR}") {
+                            sh '''
+                            apk add --no-cache git
+                            go mod download
+                            CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o auth-server ./cmd
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                script {
+                    docker.image('golang:1.25-alpine').inside("-v /var/jenkins_home/go-pkg:/go/pkg/mod -v /var/jenkins_home/go-build:/root/.cache/go-build --network ${DOCKER_NET}") {
+                        dir("${SERVICE_DIR}") {
+                            sh '''
+                            apk add --no-cache git
+                            go test ./... -coverprofile=coverage.out
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    docker.image('sonarsource/sonar-scanner-cli:latest').inside("--network ${DOCKER_NET}") {
+                        dir("${SERVICE_DIR}") {
+                            withSonarQubeEnv('SonarQube') {
+                                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                                    sh '''
+                                    sonar-scanner \
+                                      -Dsonar.host.url="$SONAR_HOST_URL" \
+                                      -Dsonar.login="$SONAR_TOKEN" \
+                                      -Dsonar.projectKey=auth-service \
+                                      -Dsonar.projectName="Auth Service"
+                                    '''
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                sh '''
+                docker compose up -d registry
+
+                docker build \
+                  -t "localhost:5000/${SERVICE_NAME}:${BUILD_NUMBER}" \
+                  -t "localhost:5000/${SERVICE_NAME}:latest" \
+                  "${SERVICE_DIR}"
+
+                docker push "localhost:5000/${SERVICE_NAME}:${BUILD_NUMBER}"
+                docker push "localhost:5000/${SERVICE_NAME}:latest"
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            dir("${SERVICE_DIR}") {
+                archiveArtifacts artifacts: 'coverage.out,auth-server', allowEmptyArchive: true
+            }
+        }
+    }
+}

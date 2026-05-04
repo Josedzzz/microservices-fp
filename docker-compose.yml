@@ -15,6 +15,7 @@ volumes:
   sonarqube_data:
   sonarqube_logs:
   sonarqube_extensions:
+  registry_data:
   jenkins_data:
   maven_cache:
 
@@ -377,6 +378,20 @@ services:
       - onboarding-network
     # Run once and exit. Use 'docker-compose run bdd-tests' to execute.
     profiles: ["test"]
+
+  # ============================================
+  # LOCAL DOCKER REGISTRY
+  # ============================================
+  registry:
+    image: registry:2
+    container_name: registry
+    ports:
+      - "5000:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+    networks:
+      - microservices-network
+    restart: unless-stopped
 
   # ============================================
   # SONARQUBE DATABASE (POSTGRES 16)
