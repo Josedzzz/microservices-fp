@@ -35,7 +35,7 @@ stage('SonarQube Analysis') {
 
                 docker run --rm \
                     -u root \
-                    --network ${DOCKER_NET} \
+                    --network microservices-fp_microservices-network \
                     --volumes-from jenkins \
                     -v "$WORKSPACE/${SERVICE_DIR}/.scannerwork:/tmp/.scannerwork" \
                     -e SONAR_HOST_URL=http://sonarqube:9000 \
@@ -49,8 +49,8 @@ stage('SonarQube Analysis') {
                     -Dsonar.host.url=http://sonarqube:9000 \
                     -Dsonar.token=$SONAR_TOKEN
 
-                # Fix permissions so Jenkins user can read the report
-                sudo chown -R $(id -u):$(id -g) .scannerwork
+                # REMOVED 'sudo' - Jenkins has enough permission to do this itself
+                chown -R $(id -u):$(id -g) .scannerwork
                 '''
             }
         }
