@@ -33,6 +33,7 @@ stage('SonarQube Analysis') {
                     --volumes-from jenkins \
                     -e SONAR_HOST_URL=http://sonarqube:9000 \
                     -e SONAR_TOKEN=$SONAR_TOKEN \
+                    -e SONAR_USER_HOME="$WORKSPACE/${SERVICE_DIR}/.sonar" \
                     -w "$WORKSPACE/${SERVICE_DIR}" \
                     sonarsource/sonar-scanner-cli:latest \
                     sonar-scanner \
@@ -41,7 +42,7 @@ stage('SonarQube Analysis') {
                     -Dsonar.java.binaries=target/classes \
                     -Dsonar.host.url=http://sonarqube:9000 \
                     -Dsonar.token=$SONAR_TOKEN \
-                    -Dsonar.working.dir="$WORKSPACE/${SERVICE_DIR}/.scannerwork"
+                    -Dproject.settings=sonar-project.properties
                 '''
             }
         }
