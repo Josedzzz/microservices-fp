@@ -134,7 +134,18 @@ pipeline {
                   fi
                 }
 
-                run_compose up -d registry
+                ensure_registry() {
+                  if docker ps --format '{{.Names}}' | grep -qx registry; then
+                    return 0
+                  fi
+                  if docker ps -a --format '{{.Names}}' | grep -qx registry; then
+                    docker start registry >/dev/null
+                    return 0
+                  fi
+                  run_compose up -d registry
+                }
+
+                ensure_registry
 
                 docker build \
                   -t "localhost:5000/${SERVICE_NAME}:${BUILD_NUMBER}" \
