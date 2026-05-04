@@ -67,8 +67,47 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    dir("${SERVICE_DIR}") {
+                        sh '''
+                        set -e
+                        REPORT_FILE=".scannerwork/report-task.txt"
+                        if [ ! -f "$REPORT_FILE" ]; then
+                          REPORT_FILE="$(find . -name report-task.txt | head -n 1 || true)"
+                        fi
+                        if [ -z "$REPORT_FILE" ] || [ ! -f "$REPORT_FILE" ]; then
+                          echo "report-task.txt not found; cannot evaluate quality gate"
+                          exit 1
+                        fi
+
+                        CE_TASK_URL="$(grep '^ceTaskUrl=' "$REPORT_FILE" | cut -d= -f2-)"
+                        if [ -z "$CE_TASK_URL" ]; then
+                          echo "ceTaskUrl missing in $REPORT_FILE"
+                          exit 1
+                        fi
+
+                        sqcurl() {
+                          docker run --rm --network "${DOCKER_NET}" curlimages/curl:8.10.1 -s -u "$SONAR_TOKEN:" "$1"
+                        }
+
+                        echo "Polling Sonar CE task: $CE_TASK_URL"
+                        for i in $(seq 1 60); do
+                          CE_STATUS="$(sqcurl "$CE_TASK_URL" | sed -n 's/.*"status":"\\([^"]*\\)".*/\\1/p' | head -n1)"
+                          if [ "$CE_STATUS" = "SUCCESS" ]; then
+                            break
+                          fi
+                          if [ "$CE_STATUS" = "FAILED" ] || [ "$CE_STATUS" = "CANCELED" ]; then
+                            echo "Sonar CE task failed with status $CE_STATUS"
+                            exit 1
+                          fi
+                          sleep 5
+                        done
+
+                        QG_STATUS="$(sqcurl "http://sonarqube:9000/api/qualitygates/project_status?projectKey=notification-service" | sed -n 's/.*"status":"\\([^"]*\\)".*/\\1/p' | head -n1)"
+                        echo "Quality Gate status: $QG_STATUS"
+                        [ "$QG_STATUS" = "OK" ]
+                        '''
+                    }
                 }
             }
         }
@@ -76,16 +115,20 @@ pipeline {
         stage('Package & Publish') {
             steps {
                 sh '''
-                if docker compose version >/dev/null 2>&1; then
-                  DC="docker compose"
-                elif command -v docker-compose >/dev/null 2>&1; then
-                  DC="docker-compose"
-                else
-                  echo "No docker compose command found"
-                  exit 1
-                fi
+                run_compose() {
+                  if docker compose version >/dev/null 2>&1; then
+                    docker compose "$@"
+                  elif command -v docker-compose >/dev/null 2>&1; then
+                    docker-compose "$@"
+                  else
+                    docker run --rm \
+                      -v /var/run/docker.sock:/var/run/docker.sock \
+                      -v "$PWD":"$PWD" -w "$PWD" \
+                      docker/compose:2.29.7 "$@"
+                  fi
+                }
 
-                ${DC} up -d registry
+                run_compose up -d registry
 
                 docker build \
                   -t "localhost:5000/${SERVICE_NAME}:${BUILD_NUMBER}" \
@@ -103,16 +146,20 @@ pipeline {
                 sh '''
                 set -e
                 CI_PROJECT="ci-${BUILD_NUMBER}"
-                if docker compose version >/dev/null 2>&1; then
-                  DC="docker compose"
-                elif command -v docker-compose >/dev/null 2>&1; then
-                  DC="docker-compose"
-                else
-                  echo "No docker compose command found"
-                  exit 1
-                fi
+                run_compose() {
+                  if docker compose version >/dev/null 2>&1; then
+                    docker compose "$@"
+                  elif command -v docker-compose >/dev/null 2>&1; then
+                    docker-compose "$@"
+                  else
+                    docker run --rm \
+                      -v /var/run/docker.sock:/var/run/docker.sock \
+                      -v "$PWD":"$PWD" -w "$PWD" \
+                      docker/compose:2.29.7 "$@"
+                  fi
+                }
 
-                ${DC} --project-name "${CI_PROJECT}" --profile test up -d --build \
+                run_compose --project-name "${CI_PROJECT}" --profile test up -d --build \
                   rabbitmq \
                   database-employees employees-service \
                   database-departments departments-service \
@@ -146,7 +193,7 @@ pipeline {
                 wait_for_http "Notifications Service" "http://notifications-service:8084/v3/api-docs"
                 wait_for_http "Profiles Service" "http://profiles-service:8085/health"
 
-                ${DC} --project-name "${CI_PROJECT}" --profile test run --rm bdd-tests
+                run_compose --project-name "${CI_PROJECT}" --profile test run --rm bdd-tests
                 '''
             }
         }
@@ -160,15 +207,19 @@ pipeline {
             }
             sh '''
             CI_PROJECT="ci-${BUILD_NUMBER}"
-            if docker compose version >/dev/null 2>&1; then
-              DC="docker compose"
-            elif command -v docker-compose >/dev/null 2>&1; then
-              DC="docker-compose"
-            else
-              echo "No docker compose command found for cleanup"
-              exit 0
-            fi
-            ${DC} --project-name "${CI_PROJECT}" down -v --remove-orphans || true
+            run_compose() {
+              if docker compose version >/dev/null 2>&1; then
+                docker compose "$@"
+              elif command -v docker-compose >/dev/null 2>&1; then
+                docker-compose "$@"
+              else
+                docker run --rm \
+                  -v /var/run/docker.sock:/var/run/docker.sock \
+                  -v "$PWD":"$PWD" -w "$PWD" \
+                  docker/compose:2.29.7 "$@"
+              fi
+            }
+            run_compose --project-name "${CI_PROJECT}" down -v --remove-orphans || true
             '''
         }
         success {
