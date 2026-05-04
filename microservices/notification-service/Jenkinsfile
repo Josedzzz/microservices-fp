@@ -1,6 +1,13 @@
 pipeline {
     agent any
 
+    environment {
+        // Path to your specific microservice
+        SERVICE_DIR = 'microservices/notification-service'
+        // The internal Docker network name found via 'docker network ls'
+        DOCKER_NET  = 'microservices-fp_microservices-network'
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -8,32 +15,19 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build & Test') {
             agent {
                 docker {
                     image 'maven:3.9-eclipse-temurin-17'
-                    args '-v maven_cache:/root/.m2'
+                    // Using the specific network and mounting the maven cache
+                    args "-v maven_cache:/root/.m2 --network ${DOCKER_NET}"
                     reuseNode true
                 }
             }
             steps {
-                dir('microservices/notification-service') {
-                    sh 'mvn -B -DskipTests clean package'
-                }
-            }
-        }
-
-        stage('Test') {
-            agent {
-                docker {
-                    image 'maven:3.9-eclipse-temurin-17'
-                    args '-v maven_cache:/root/.m2'
-                    reuseNode true
-                }
-            }
-            steps {
-                dir('microservices/notification-service') {
-                    sh 'mvn -B verify'
+                dir("${SERVICE_DIR}") {
+                    // Clean, run tests, and package the jar
+                    sh 'mvn -B clean verify'
                 }
             }
         }
@@ -42,15 +36,15 @@ pipeline {
             agent {
                 docker {
                     image 'maven:3.9-eclipse-temurin-17'
-                    args '-v maven_cache:/root/.m2'
+                    args "-v maven_cache:/root/.m2 --network ${DOCKER_NET}"
                     reuseNode true
                 }
             }
             steps {
-                dir('microservices/notification-service') {
-                    // "SonarQube" must match the name in Jenkins -> System Configuration
+                dir("${SERVICE_DIR}") {
+                    // 'SonarQube' must match the name in Manage Jenkins > System
                     withSonarQubeEnv('SonarQube') {
-                        sh 'mvn sonar:sonar'
+                        sh "mvn sonar:sonar -Dsonar.host.url=http://sonarqube:9000"
                     }
                 }
             }
@@ -58,6 +52,8 @@ pipeline {
 
         stage("Quality Gate") {
             steps {
+                // Waits for SonarQube to report back. 
+                // Requires a Webhook in SonarQube pointing to http://jenkins:8080/sonarqube-webhook/
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
@@ -67,8 +63,16 @@ pipeline {
 
     post {
         always {
-            junit testResults: 'microservices/notification-service/target/surefire-reports/*.xml', allowEmptyResults: true
-            archiveArtifacts artifacts: 'microservices/notification-service/target/site/jacoco/**', allowEmptyArchive: true
+            // Collects test results for the Jenkins UI
+            junit testResults: "${SERVICE_DIR}/target/surefire-reports/*.xml", allowEmptyResults: true
+            // Archives the final jar file
+            archiveArtifacts artifacts: "${SERVICE_DIR}/target/*.jar", allowEmptyArchive: true
+        }
+        success {
+            echo 'Build, Test, and Analysis completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check the logs for connection or test issues.'
         }
     }
 }
