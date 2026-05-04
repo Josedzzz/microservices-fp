@@ -20,9 +20,12 @@ pipeline {
         stage('Build') {
             steps {
                 script {
-                    docker.image('golang:1.25').inside("-v /var/jenkins_home/go-pkg:/go/pkg/mod -v /var/jenkins_home/go-build:/root/.cache/go-build --network ${DOCKER_NET}") {
+                    docker.image('golang:1.25').inside("--network ${DOCKER_NET}") {
                         dir("${SERVICE_DIR}") {
                             sh '''
+                            export GOMODCACHE="$WORKSPACE/.go/pkg/mod"
+                            export GOCACHE="$WORKSPACE/.go/cache"
+                            mkdir -p "$GOMODCACHE" "$GOCACHE"
                             go mod download
                             CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o auth-server ./cmd
                             '''
@@ -35,9 +38,12 @@ pipeline {
         stage('Test') {
             steps {
                 script {
-                    docker.image('golang:1.25').inside("-v /var/jenkins_home/go-pkg:/go/pkg/mod -v /var/jenkins_home/go-build:/root/.cache/go-build --network ${DOCKER_NET}") {
+                    docker.image('golang:1.25').inside("--network ${DOCKER_NET}") {
                         dir("${SERVICE_DIR}") {
                             sh '''
+                            export GOMODCACHE="$WORKSPACE/.go/pkg/mod"
+                            export GOCACHE="$WORKSPACE/.go/cache"
+                            mkdir -p "$GOMODCACHE" "$GOCACHE"
                             go test ./... -coverprofile=coverage.out
                             '''
                         }
