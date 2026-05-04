@@ -31,16 +31,16 @@ stage('SonarQube Analysis') {
         withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
             dir("${SERVICE_DIR}") {
                 sh '''
-                # 1. Prepare host folder
+                # Clean and prepare the local directory
+                rm -rf .scannerwork
                 mkdir -p .scannerwork
-                rm -rf .scannerwork/*
+                chmod 777 .scannerwork
 
-                # 2. Run Scanner
                 docker run --rm \
                     -u root \
                     --network microservices-fp_microservices-network \
                     --volumes-from jenkins \
-                    -v "$WORKSPACE/${SERVICE_DIR}/.scannerwork:/sonar-work" \
+                    -v "$WORKSPACE/${SERVICE_DIR}/.scannerwork:/output" \
                     -e SONAR_HOST_URL=http://sonarqube:9000 \
                     -e SONAR_TOKEN=$SONAR_TOKEN \
                     -w "$WORKSPACE/${SERVICE_DIR}" \
@@ -51,9 +51,10 @@ stage('SonarQube Analysis') {
                     -Dsonar.java.binaries=target/classes \
                     -Dsonar.host.url=http://sonarqube:9000 \
                     -Dsonar.token=$SONAR_TOKEN \
-                    -Dsonar.working.dir=/sonar-work
-
-                # 3. Fix permissions
+                    -Dsonar.working.dir=/output \
+                    -Dsonar.userHome=/output/.sonar
+                
+                # Ensure Jenkins can read the files created by the root Docker user
                 chown -R $(id -u):$(id -g) .scannerwork
                 '''
             }
