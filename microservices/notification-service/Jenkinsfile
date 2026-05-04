@@ -48,14 +48,57 @@ stage('SonarQube Analysis') {
     }
 }
 
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
+stage('Quality Gate') {
+    steps {
+        // We use the same token to ask the API for the result
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            dir("${SERVICE_DIR}") {
+                sh '''
+                set -e
+                # 1. Extract the Task URL from the report file created by the scanner
+                CE_TASK_URL=$(grep ceTaskUrl .scannerwork/report-task.txt | cut -d= -f2-)
+                
+                echo "Checking SonarQube Task Status..."
+                
+                # 2. Poll the API until the analysis is finished (SUCCESS, FAILED, or CANCELED)
+                for i in $(seq 1 20); do
+                    RESPONSE=$(curl -s -u "$SONAR_TOKEN:" "$CE_TASK_URL")
+                    STATUS=$(echo $RESPONSE | jq -r '.task.status')
+                    
+                    if [ "$STATUS" = "SUCCESS" ]; then 
+                        ANALYSIS_ID=$(echo $RESPONSE | jq -r '.task.analysisId')
+                        break 
+                    fi
+                    
+                    if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then 
+                        echo "SonarQube Task failed or was canceled."
+                        exit 1 
+                    fi
+                    
+                    echo "Waiting for SonarQube to process report... ($i/20)"
+                    sleep 5
+                done
+
+                # 3. Check the actual Quality Gate status (Passed/Failed)
+                echo "Fetching Quality Gate result for Analysis ID: $ANALYSIS_ID"
+                QG_STATUS=$(curl -s -u "$SONAR_TOKEN:" "http://sonarqube:9000/api/qualitygates/project_status?analysisId=$ANALYSIS_ID" | jq -r '.projectStatus.status')
+
+                echo "Quality Gate Status: $QG_STATUS"
+                
+                if [ "$QG_STATUS" = "ERROR" ] || [ "$QG_STATUS" = "WARN" ]; then
+                    echo "Quality Gate Failed! (Status: $QG_STATUS)"
+                    exit 1
+                elif [ "$QG_STATUS" = "OK" ]; then
+                    echo "Quality Gate Passed!"
+                else
+                    echo "Unknown Quality Gate status: $QG_STATUS"
+                    exit 1
+                fi
+                '''
             }
         }
     }
+}
 
     post {
         always {
