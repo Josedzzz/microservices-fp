@@ -112,8 +112,14 @@ pipeline {
         stage('Package & Publish') {
             steps {
                 sh '''
-                COMPOSE_FILE="${WORKSPACE}/docker-compose.yml"
-                COMPOSE_PROJECT_DIR="${WORKSPACE}"
+                COMPOSE_FILE="$(find "$WORKSPACE" "${WORKSPACE}@script" -maxdepth 4 -name docker-compose.yml 2>/dev/null | head -n 1)"
+                if [ -z "${COMPOSE_FILE}" ]; then
+                  echo "docker-compose.yml not found in workspace roots"
+                  ls -la "$WORKSPACE" || true
+                  ls -la "${WORKSPACE}@script" || true
+                  exit 1
+                fi
+                COMPOSE_PROJECT_DIR="$(dirname "${COMPOSE_FILE}")"
 
                 run_compose() {
                   if docker compose version >/dev/null 2>&1; then
@@ -146,8 +152,14 @@ pipeline {
                 sh '''
                 set -e
                 CI_PROJECT="ci-${BUILD_NUMBER}"
-                COMPOSE_FILE="${WORKSPACE}/docker-compose.yml"
-                COMPOSE_PROJECT_DIR="${WORKSPACE}"
+                COMPOSE_FILE="$(find "$WORKSPACE" "${WORKSPACE}@script" -maxdepth 4 -name docker-compose.yml 2>/dev/null | head -n 1)"
+                if [ -z "${COMPOSE_FILE}" ]; then
+                  echo "docker-compose.yml not found in workspace roots"
+                  ls -la "$WORKSPACE" || true
+                  ls -la "${WORKSPACE}@script" || true
+                  exit 1
+                fi
+                COMPOSE_PROJECT_DIR="$(dirname "${COMPOSE_FILE}")"
                 run_compose() {
                   if docker compose version >/dev/null 2>&1; then
                     docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
@@ -209,8 +221,12 @@ pipeline {
             }
             sh '''
             CI_PROJECT="ci-${BUILD_NUMBER}"
-            COMPOSE_FILE="${WORKSPACE}/docker-compose.yml"
-            COMPOSE_PROJECT_DIR="${WORKSPACE}"
+            COMPOSE_FILE="$(find "$WORKSPACE" "${WORKSPACE}@script" -maxdepth 4 -name docker-compose.yml 2>/dev/null | head -n 1)"
+            if [ -z "${COMPOSE_FILE}" ]; then
+              echo "docker-compose.yml not found for cleanup; skipping"
+              exit 0
+            fi
+            COMPOSE_PROJECT_DIR="$(dirname "${COMPOSE_FILE}")"
             run_compose() {
               if docker compose version >/dev/null 2>&1; then
                 docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
