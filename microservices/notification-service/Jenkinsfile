@@ -71,11 +71,8 @@ pipeline {
                     dir("${SERVICE_DIR}") {
                         sh '''
                         set -e
-                        REPORT_FILE=".scannerwork/report-task.txt"
+                        REPORT_FILE="target/sonar/report-task.txt"
                         if [ ! -f "$REPORT_FILE" ]; then
-                          REPORT_FILE="$(find . -name report-task.txt | head -n 1 || true)"
-                        fi
-                        if [ -z "$REPORT_FILE" ] || [ ! -f "$REPORT_FILE" ]; then
                           echo "report-task.txt not found; cannot evaluate quality gate"
                           exit 1
                         fi
@@ -115,16 +112,19 @@ pipeline {
         stage('Package & Publish') {
             steps {
                 sh '''
+                COMPOSE_FILE="${WORKSPACE}/docker-compose.yml"
+                COMPOSE_PROJECT_DIR="${WORKSPACE}"
+
                 run_compose() {
                   if docker compose version >/dev/null 2>&1; then
-                    docker compose "$@"
+                    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
                   elif command -v docker-compose >/dev/null 2>&1; then
-                    docker-compose "$@"
+                    docker-compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
                   else
                     docker run --rm \
                       -v /var/run/docker.sock:/var/run/docker.sock \
-                      -v "$PWD":"$PWD" -w "$PWD" \
-                      docker/compose:latest "$@"
+                      -v "${COMPOSE_PROJECT_DIR}:${COMPOSE_PROJECT_DIR}" -w "${COMPOSE_PROJECT_DIR}" \
+                      docker/compose:latest -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
                   fi
                 }
 
@@ -146,16 +146,18 @@ pipeline {
                 sh '''
                 set -e
                 CI_PROJECT="ci-${BUILD_NUMBER}"
+                COMPOSE_FILE="${WORKSPACE}/docker-compose.yml"
+                COMPOSE_PROJECT_DIR="${WORKSPACE}"
                 run_compose() {
                   if docker compose version >/dev/null 2>&1; then
-                    docker compose "$@"
+                    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
                   elif command -v docker-compose >/dev/null 2>&1; then
-                    docker-compose "$@"
+                    docker-compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
                   else
                     docker run --rm \
                       -v /var/run/docker.sock:/var/run/docker.sock \
-                      -v "$PWD":"$PWD" -w "$PWD" \
-                      docker/compose:latest "$@"
+                      -v "${COMPOSE_PROJECT_DIR}:${COMPOSE_PROJECT_DIR}" -w "${COMPOSE_PROJECT_DIR}" \
+                      docker/compose:latest -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
                   fi
                 }
 
@@ -207,16 +209,18 @@ pipeline {
             }
             sh '''
             CI_PROJECT="ci-${BUILD_NUMBER}"
+            COMPOSE_FILE="${WORKSPACE}/docker-compose.yml"
+            COMPOSE_PROJECT_DIR="${WORKSPACE}"
             run_compose() {
               if docker compose version >/dev/null 2>&1; then
-                docker compose "$@"
+                docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
               elif command -v docker-compose >/dev/null 2>&1; then
-                docker-compose "$@"
+                docker-compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
               else
                 docker run --rm \
                   -v /var/run/docker.sock:/var/run/docker.sock \
-                  -v "$PWD":"$PWD" -w "$PWD" \
-                  docker/compose:latest "$@"
+                  -v "${COMPOSE_PROJECT_DIR}:${COMPOSE_PROJECT_DIR}" -w "${COMPOSE_PROJECT_DIR}" \
+                  docker/compose:latest -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
               fi
             }
             run_compose --project-name "${CI_PROJECT}" down -v --remove-orphans || true
