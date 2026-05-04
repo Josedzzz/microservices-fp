@@ -138,7 +138,7 @@ pipeline {
                     docker run --rm \
                       -v /var/run/docker.sock:/var/run/docker.sock \
                       --volumes-from "$(hostname)" -w "${COMPOSE_PROJECT_DIR}" \
-                      docker/compose:latest -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
+                      docker:27-cli compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_PROJECT_DIR}" "$@"
                   fi
                 }
 
