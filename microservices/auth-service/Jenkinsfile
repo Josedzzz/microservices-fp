@@ -80,7 +80,7 @@ pipeline {
                     dir("${SERVICE_DIR}") {
                         sh '''
                         set -e
-                        REPORT_FILE="target/sonar/report-task.txt"
+                        REPORT_FILE=".scannerwork/report-task.txt"
                         if [ ! -f "$REPORT_FILE" ]; then
                           echo "report-task.txt not found; cannot evaluate quality gate"
                           exit 1
