@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_NET = 'microservices-fp_microservices-network'
         SERVICE_DIR = 'microservices/notification-service'
+        DOCKER_NET  = 'microservices-fp_microservices-network'
     }
 
     stages {
@@ -16,85 +16,53 @@ pipeline {
         stage('Build & Test') {
             steps {
                 script {
-                    // Running Maven build inside a container to ensure environment consistency
-                    docker.image('maven:3.9.6-eclipse-temurin-17').inside("-v ${HOME}/.m2:/root/.m2") {
+                    docker.image('maven:3.9.6-eclipse-temurin-17').inside("-v /var/jenkins_home/.m2:/root/.m2 --network ${DOCKER_NET}") {
                         dir("${SERVICE_DIR}") {
-                            sh 'mvn clean install'
+                            sh 'mvn -B clean verify'
                         }
                     }
                 }
             }
         }
 
-stage('SonarQube Analysis') {
-    steps {
-        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-            dir("${SERVICE_DIR}") {
-                sh '''
-                # Clean and prepare the local directory
-                rm -rf .scannerwork
-                mkdir -p .scannerwork
-                chmod 777 .scannerwork
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    docker.image('maven:3.9.6-eclipse-temurin-17').inside("-v /var/jenkins_home/.m2:/root/.m2 --network ${DOCKER_NET}") {
+                        dir("${SERVICE_DIR}") {
+                            withSonarQubeEnv('SonarQube') {
+                                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                                    sh '''
+                                    echo "Checking Sonar token..."
+                                    curl -s -u "$SONAR_TOKEN": "$SONAR_HOST_URL/api/authentication/validate"
+                                    mvn -B sonar:sonar \
+                                      -Dsonar.host.url="$SONAR_HOST_URL" \
+                                      -Dsonar.login="$SONAR_TOKEN" \
+                                      -Dsonar.projectKey=notification-service \
+                                      -Dsonar.projectName="Notification Service"
+                                    '''
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-                docker run --rm \
-                    -u root \
-                    --network microservices-fp_microservices-network \
-                    --volumes-from jenkins \
-                    -v "$WORKSPACE/${SERVICE_DIR}/.scannerwork:/output" \
-                    -e SONAR_HOST_URL=http://sonarqube:9000 \
-                    -e SONAR_TOKEN=$SONAR_TOKEN \
-                    -w "$WORKSPACE/${SERVICE_DIR}" \
-                    sonarsource/sonar-scanner-cli:latest \
-                    sonar-scanner \
-                    -Dsonar.projectKey=notification-service \
-                    -Dsonar.sources=src/main/java \
-                    -Dsonar.java.binaries=target/classes \
-                    -Dsonar.host.url=http://sonarqube:9000 \
-                    -Dsonar.token=$SONAR_TOKEN \
-                    -Dsonar.working.dir=/output \
-                    -Dsonar.userHome=/output/.sonar
-                
-                # Ensure Jenkins can read the files created by the root Docker user
-                chown -R $(id -u):$(id -g) .scannerwork
-                '''
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
             }
         }
     }
-}
-
-stage('Quality Gate') {
-    steps {
-        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-            dir("${SERVICE_DIR}") {
-                sh '''
-                set -e
-                
-                # Search recursively in the local .scannerwork folder
-                REPORT_FILE=$(find .scannerwork -type f -name "report-task.txt" | head -n 1)
-                
-                if [ -z "$REPORT_FILE" ]; then
-                    echo "Error: report-task.txt not found!"
-                    echo "Current directory contents:"
-                    ls -R .scannerwork
-                    exit 1
-                fi
-
-                CE_TASK_URL=$(grep ceTaskUrl "$REPORT_FILE" | cut -d= -f2-)
-                echo "Found report at $REPORT_FILE"
-                
-                # ... (rest of your loop)
-                '''
-            }
-        }
-    }
-}    
-
-}
 
     post {
         always {
             dir("${SERVICE_DIR}") {
-                junit 'target/surefire-reports/*.xml'
+                junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
+                archiveArtifacts artifacts: 'target/site/jacoco/**,target/*.jar', allowEmptyArchive: true
             }
         }
         success {
