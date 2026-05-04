@@ -31,6 +31,7 @@ stage('SonarQube Analysis') {
         withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
             dir("${SERVICE_DIR}") {
                 sh '''
+                # Create the folder and ensure it's empty/ready
                 mkdir -p .scannerwork
 
                 docker run --rm \
@@ -47,9 +48,10 @@ stage('SonarQube Analysis') {
                     -Dsonar.sources=src/main/java \
                     -Dsonar.java.binaries=target/classes \
                     -Dsonar.host.url=http://sonarqube:9000 \
-                    -Dsonar.token=$SONAR_TOKEN
+                    -Dsonar.token=$SONAR_TOKEN \
+                    -Dsonar.working.dir=/tmp/.scannerwork
 
-                # REMOVED 'sudo' - Jenkins has enough permission to do this itself
+                # Reclaim ownership
                 chown -R $(id -u):$(id -g) .scannerwork
                 '''
             }
