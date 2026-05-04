@@ -184,6 +184,7 @@ pipeline {
                   fi
                 }
 
+                docker container prune -f --filter "label!=keep=true" >/dev/null 2>&1 || true
                 run_compose --project-name "${CI_PROJECT}" --profile test up -d --build \
                   rabbitmq \
                   database-employees employees-service \
