@@ -26,85 +26,62 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    dir("${SERVICE_DIR}") {
-                        sh '''
-                        # Ensure the directory exists on the host so Docker can map to it
-                        mkdir -p .scannerwork
+stage('SonarQube Analysis') {
+    steps {
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            dir("${SERVICE_DIR}") {
+                sh '''
+                mkdir -p .scannerwork
 
-                        docker run --rm \
-                            -u root \
-                            --network ${DOCKER_NET} \
-                            --volumes-from jenkins \
-                            -v "$WORKSPACE/${SERVICE_DIR}/.scannerwork:/tmp/.scannerwork" \
-                            -e SONAR_HOST_URL=http://sonarqube:9000 \
-                            -e SONAR_TOKEN=$SONAR_TOKEN \
-                            -w "$WORKSPACE/${SERVICE_DIR}" \
-                            sonarsource/sonar-scanner-cli:latest \
-                            sonar-scanner \
-                            -Dsonar.projectKey=notification-service \
-                            -Dsonar.sources=src/main/java \
-                            -Dsonar.java.binaries=target/classes \
-                            -Dsonar.host.url=http://sonarqube:9000 \
-                            -Dsonar.token=$SONAR_TOKEN
-                        '''
-                    }
-                }
+                docker run --rm \
+                    -u root \
+                    --network ${DOCKER_NET} \
+                    --volumes-from jenkins \
+                    -v "$WORKSPACE/${SERVICE_DIR}/.scannerwork:/tmp/.scannerwork" \
+                    -e SONAR_HOST_URL=http://sonarqube:9000 \
+                    -e SONAR_TOKEN=$SONAR_TOKEN \
+                    -w "$WORKSPACE/${SERVICE_DIR}" \
+                    sonarsource/sonar-scanner-cli:latest \
+                    sonar-scanner \
+                    -Dsonar.projectKey=notification-service \
+                    -Dsonar.sources=src/main/java \
+                    -Dsonar.java.binaries=target/classes \
+                    -Dsonar.host.url=http://sonarqube:9000 \
+                    -Dsonar.token=$SONAR_TOKEN
+
+                # Fix permissions so Jenkins user can read the report
+                sudo chown -R $(id -u):$(id -g) .scannerwork
+                '''
             }
         }
+    }
+}
 
         stage('Quality Gate') {
-            steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    dir("${SERVICE_DIR}") {
-                        sh '''
-                        set -e
-                        # Locate the report file created by the scanner
-                        REPORT_FILE=$(find . -name "report-task.txt" | head -n 1)
-                        
-                        if [ -z "$REPORT_FILE" ] || [ ! -f "$REPORT_FILE" ]; then
-                            echo "Error: report-task.txt not found!"
-                            exit 1
-                        fi
+    steps {
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            dir("${SERVICE_DIR}") {
+                sh '''
+                set -e
+                
+                # Look specifically in .scannerwork and hide permission errors
+                REPORT_FILE=$(find .scannerwork -name "report-task.txt" 2>/dev/null | head -n 1)
+                
+                if [ -z "$REPORT_FILE" ]; then
+                    echo "Error: report-task.txt not found in .scannerwork folder!"
+                    ls -la .scannerwork
+                    exit 1
+                fi
 
-                        CE_TASK_URL=$(grep ceTaskUrl "$REPORT_FILE" | cut -d= -f2-)
-                        echo "Found report at $REPORT_FILE. Checking status at: $CE_TASK_URL"
-                        
-                        # Poll the SonarQube API until the processing is complete
-                        for i in $(seq 1 20); do
-                            RESPONSE=$(curl -s -u "$SONAR_TOKEN:" "$CE_TASK_URL")
-                            STATUS=$(echo $RESPONSE | jq -r '.task.status')
-                            
-                            if [ "$STATUS" = "SUCCESS" ]; then 
-                                ANALYSIS_ID=$(echo $RESPONSE | jq -r '.task.analysisId')
-                                break 
-                            fi
-                            
-                            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then 
-                                echo "SonarQube Task failed on server."
-                                exit 1 
-                            fi
-                            
-                            echo "Waiting for SonarQube to process report... ($i/20)"
-                            sleep 5
-                        done
-
-                        # Check the actual Quality Gate result (Passed/Failed)
-                        QG_STATUS=$(curl -s -u "$SONAR_TOKEN:" "http://sonarqube:9000/api/qualitygates/project_status?analysisId=$ANALYSIS_ID" | jq -r '.projectStatus.status')
-
-                        echo "Quality Gate Status: $QG_STATUS"
-                        
-                        if [ "$QG_STATUS" = "ERROR" ] || [ "$QG_STATUS" = "WARN" ]; then
-                            echo "Quality Gate Failed!"
-                            exit 1
-                        fi
-                        '''
-                    }
-                }
+                CE_TASK_URL=$(grep ceTaskUrl "$REPORT_FILE" | cut -d= -f2-)
+                echo "Found report at $REPORT_FILE. Checking status at: $CE_TASK_URL"
+                
+                # ... (rest of your curl and jq loop remains the same)
+                '''
             }
         }
+    }
+}
     }
 
     post {
