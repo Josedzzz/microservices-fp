@@ -22,30 +22,31 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    dir("${SERVICE_DIR}") {
-                        sh '''
-                        docker run --rm \
-                            -u root \
-                            --network ${DOCKER_NET} \
-                            --volumes-from jenkins \
-                            -e SONAR_HOST_URL=http://sonarqube:9000 \
-                            -e SONAR_TOKEN=$SONAR_TOKEN \
-                            -w "$WORKSPACE/${SERVICE_DIR}" \
-                            sonarsource/sonar-scanner-cli:latest \
-                            sonar-scanner \
-                            -Dsonar.projectKey=notification-service \
-                            -Dsonar.sources=src/main/java \
-                            -Dsonar.java.binaries=target/classes \
-                            -Dsonar.host.url=http://sonarqube:9000 \
-                            -Dsonar.token=$SONAR_TOKEN
-                        '''
-                    }
-                }
+stage('SonarQube Analysis') {
+    steps {
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            dir("${SERVICE_DIR}") {
+                sh '''
+                docker run --rm \
+                    -u root \
+                    --network ${DOCKER_NET} \
+                    --volumes-from jenkins \
+                    -e SONAR_HOST_URL=http://sonarqube:9000 \
+                    -e SONAR_TOKEN=$SONAR_TOKEN \
+                    -w "$WORKSPACE/${SERVICE_DIR}" \
+                    sonarsource/sonar-scanner-cli:latest \
+                    sonar-scanner \
+                    -Dsonar.projectKey=notification-service \
+                    -Dsonar.sources=src/main/java \
+                    -Dsonar.java.binaries=target/classes \
+                    -Dsonar.host.url=http://sonarqube:9000 \
+                    -Dsonar.token=$SONAR_TOKEN \
+                    -Dsonar.working.dir="$WORKSPACE/${SERVICE_DIR}/.scannerwork"
+                '''
             }
         }
+    }
+}
 
         stage('Quality Gate') {
     steps {
