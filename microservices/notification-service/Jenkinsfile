@@ -76,7 +76,16 @@ pipeline {
         stage('Package & Publish') {
             steps {
                 sh '''
-                docker compose up -d registry
+                if docker compose version >/dev/null 2>&1; then
+                  DC="docker compose"
+                elif command -v docker-compose >/dev/null 2>&1; then
+                  DC="docker-compose"
+                else
+                  echo "No docker compose command found"
+                  exit 1
+                fi
+
+                ${DC} up -d registry
 
                 docker build \
                   -t "localhost:5000/${SERVICE_NAME}:${BUILD_NUMBER}" \
@@ -94,9 +103,16 @@ pipeline {
                 sh '''
                 set -e
                 CI_PROJECT="ci-${BUILD_NUMBER}"
-                COMPOSE_CMD="docker compose -p ${CI_PROJECT}"
+                if docker compose version >/dev/null 2>&1; then
+                  DC="docker compose"
+                elif command -v docker-compose >/dev/null 2>&1; then
+                  DC="docker-compose"
+                else
+                  echo "No docker compose command found"
+                  exit 1
+                fi
 
-                ${COMPOSE_CMD} --profile test up -d --build \
+                ${DC} --project-name "${CI_PROJECT}" --profile test up -d --build \
                   rabbitmq \
                   database-employees employees-service \
                   database-departments departments-service \
@@ -130,7 +146,7 @@ pipeline {
                 wait_for_http "Notifications Service" "http://notifications-service:8084/v3/api-docs"
                 wait_for_http "Profiles Service" "http://profiles-service:8085/health"
 
-                ${COMPOSE_CMD} --profile test run --rm bdd-tests
+                ${DC} --project-name "${CI_PROJECT}" --profile test run --rm bdd-tests
                 '''
             }
         }
@@ -144,7 +160,15 @@ pipeline {
             }
             sh '''
             CI_PROJECT="ci-${BUILD_NUMBER}"
-            docker compose -p "${CI_PROJECT}" down -v --remove-orphans || true
+            if docker compose version >/dev/null 2>&1; then
+              DC="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
+              DC="docker-compose"
+            else
+              echo "No docker compose command found for cleanup"
+              exit 0
+            fi
+            ${DC} --project-name "${CI_PROJECT}" down -v --remove-orphans || true
             '''
         }
         success {

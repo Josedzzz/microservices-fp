@@ -85,7 +85,16 @@ pipeline {
         stage('Package') {
             steps {
                 sh '''
-                docker compose up -d registry
+                if docker compose version >/dev/null 2>&1; then
+                  DC="docker compose"
+                elif command -v docker-compose >/dev/null 2>&1; then
+                  DC="docker-compose"
+                else
+                  echo "No docker compose command found"
+                  exit 1
+                fi
+
+                ${DC} up -d registry
 
                 docker build \
                   -t "localhost:5000/${SERVICE_NAME}:${BUILD_NUMBER}" \
