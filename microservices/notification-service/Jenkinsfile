@@ -2,58 +2,52 @@ pipeline {
     agent any
 
     environment {
-        // Path to your specific microservice
         SERVICE_DIR = 'microservices/notification-service'
-        // The internal Docker network name found via 'docker network ls'
         DOCKER_NET  = 'microservices-fp_microservices-network'
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
 
         stage('Build & Test') {
             agent {
                 docker {
                     image 'maven:3.9-eclipse-temurin-17'
-                    // Using the specific network and mounting the maven cache
                     args "-v maven_cache:/root/.m2 --network ${DOCKER_NET}"
                     reuseNode true
                 }
             }
             steps {
                 dir("${SERVICE_DIR}") {
-                    // Clean, run tests, and package the jar
                     sh 'mvn -B clean verify'
                 }
             }
         }
 
         stage('SonarQube Analysis') {
-            agent {
-                docker {
-                    image 'maven:3.9-eclipse-temurin-17'
-                    args "-v maven_cache:/root/.m2 --network ${DOCKER_NET}"
-                    reuseNode true
-                }
-            }
-            steps {
-                dir("${SERVICE_DIR}") {
-                    // 'SonarQube' must match the name in Manage Jenkins > System
-                    withSonarQubeEnv('SonarQube') {
-                        sh "mvn sonar:sonar -Dsonar.host.url=http://sonarqube:9000"
-                    }
-                }
-            }
+    steps {
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            sh '''
+                docker run --rm \
+                    -u root \
+                    --network ${DOCKER_NET} \
+                    --volumes-from jenkins_ci \
+                    -e SONAR_HOST_URL=http://sonarqube:9000 \
+                    -e SONAR_TOKEN=$SONAR_TOKEN \
+                    -w "$WORKSPACE/${SERVICE_DIR}" \
+                    sonarsource/sonar-scanner-cli:latest \
+                    sonar-scanner \
+                    -Dsonar.projectKey=notification-service \
+                    -Dsonar.sources=src/main/java \
+                    -Dsonar.java.binaries=target/classes \
+                    -Dsonar.host.url=http://sonarqube:9000 \
+                    -Dsonar.token=$SONAR_TOKEN
+            '''
         }
+    }
+}
 
-        stage("Quality Gate") {
+        stage('Quality Gate') {
             steps {
-                // Waits for SonarQube to report back. 
-                // Requires a Webhook in SonarQube pointing to http://jenkins:8080/sonarqube-webhook/
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
@@ -63,16 +57,14 @@ pipeline {
 
     post {
         always {
-            // Collects test results for the Jenkins UI
             junit testResults: "${SERVICE_DIR}/target/surefire-reports/*.xml", allowEmptyResults: true
-            // Archives the final jar file
             archiveArtifacts artifacts: "${SERVICE_DIR}/target/*.jar", allowEmptyArchive: true
         }
-        success {
-            echo 'Build, Test, and Analysis completed successfully!'
-        }
         failure {
-            echo 'Pipeline failed. Check the logs for connection or test issues.'
+            echo "Pipeline failed. Revisa logs (especialmente SonarQube)."
+        }
+        success {
+            echo "Pipeline exitoso con Quality Gate aprobado."
         }
     }
 }
