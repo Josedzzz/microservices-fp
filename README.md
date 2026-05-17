@@ -1041,3 +1041,811 @@ docker exec microservices-fp_jenkins_1 docker ps
 3. **Scale to More Services**: Add additional microservices to the CI pipeline using the same Jenkinsfile pattern.
 4. **Customize Quality Gates**: Adjust SonarQube thresholds based on team standards.
 5. **Deployment Integration**: Extend pipelines with deployment stages (Dev, Staging, Prod) as needed.
+
+---
+
+## Challenge 7 – Observability, Monitoring and Distributed Tracing
+
+This section documents the observability strategy for the microservices system, including monitoring, centralized logging, and distributed tracing. The goal is to achieve comprehensive visibility into system behavior across all services deployed in the Docker network.
+
+### 1. Observability Architecture Overview
+
+#### Purpose and Components
+
+Observability in a distributed system requires understanding three key signals: **metrics**, **logs**, and **traces**. This project integrates the following observability components:
+
+**Prometheus**
+
+- Time-series database for storing numerical metrics
+- Pulls metrics from exposed endpoints on a fixed interval
+- Used to monitor system health, performance, and resource utilization
+- Retention policy stores metrics for historical analysis
+- Foundation for alerting and dashboarding
+
+**Grafana**
+
+- Visualization and dashboarding platform
+- Queries metrics from Prometheus using PromQL
+- Creates real-time dashboards for service health, latency, and error rates
+- Supports multi-source queries (Prometheus, Loki)
+- Provides alerting capabilities integrated with notification channels
+
+**Loki**
+
+- Log aggregation system inspired by Prometheus
+- Stores logs as time-series indexed by labels (not full-text search)
+- Efficient for high-volume log ingestion in containerized environments
+- Uses LogQL for querying logs
+- Complements metrics with qualitative data about system behavior
+
+**Promtail**
+
+- Log agent that scrapes logs from containers
+- Forwards logs to Loki for centralized storage
+- Runs as a sidecar or daemonset to capture container stdout/stderr
+- Automatically adds Docker labels and service identifiers to logs
+- Handles log parsing and transformations
+
+**Jaeger (Distributed Tracing Backend)**
+
+- Collects and stores distributed traces from microservices
+- Provides trace visualization and analysis UI
+- Enables root-cause analysis of latency issues across service boundaries
+- Stores trace data for correlation and debugging
+- Integrates with OpenTelemetry protocol (OTLP)
+
+**OpenTelemetry (OTEL)**
+
+- Standardized instrumentation framework for observability
+- Provides language-agnostic APIs for metrics, traces, and logs
+- Handles data collection, transformation, and export
+- Supports context propagation across service boundaries
+- Bridges multiple languages: Go, Python, Java, TypeScript/Node.js
+
+#### Component Interactions in Docker Network
+
+All observability components run within the same Docker network (`microservices-network`) alongside the microservices:
+
+```
+Microservices Network Layout:
+├── API Gateway (Port 8000)
+├── Microservices (Ports 8081-8085)
+│   ├── Employees Service (Go, Port 8081)
+│   ├── Departments Service (Python, Port 8082)
+│   ├── Notifications Service (Java, Port 8084)
+│   └── Profiles Service (TypeScript, Port 8085)
+├── RabbitMQ (Port 5672)
+├── PostgreSQL Databases (Multiple)
+└── Observability Stack
+    ├── Prometheus (Port 9090)
+    ├── Grafana (Port 3000)
+    ├── Loki (Port 3100)
+    ├── Promtail (DaemonSet equivalent)
+    ├── Jaeger (Port 6831 UDP, 16686 Web UI)
+    └── OpenTelemetry Collector (Optional, for advanced scenarios)
+```
+
+**Data Flow**:
+
+1. **Metrics Flow**: Microservices expose `/metrics` endpoints → Prometheus scrapes on interval → Grafana queries Prometheus → dashboards visualize
+2. **Logs Flow**: Container stdout/stderr → Promtail collects → Loki stores → Grafana queries Loki → logs visualized
+3. **Traces Flow**: Microservices instrument with OpenTelemetry → traces sent to Jaeger via OTLP → Jaeger stores and visualizes traces
+
+---
+
+### 2. Pull vs Push Model
+
+#### Pull-Based Scraping (Prometheus)
+
+**How Prometheus Pull Works**:
+
+- Prometheus is configured with a list of target endpoints (e.g., `http://employees-service:8081/metrics`)
+- On a fixed interval (default 15 seconds), Prometheus connects to each target
+- Service returns metrics in OpenMetrics format
+- Prometheus parses and stores the time-series data
+
+**Why Pull Model Fits Metrics**:
+
+- **Stateless Services**: Services don't need to know about Prometheus; they only expose an endpoint
+- **Rate Control**: Prometheus controls scrape frequency; services don't overwhelm backends
+- **Network Efficiency**: Single connection per service per interval
+- **Reliability**: If a service crashes, Prometheus marks metrics stale but continues scraping others
+- **Horizontal Scaling**: New services automatically scraped once added to configuration
+
+**Advantages**:
+
+- Simpler implementation; services expose metrics passively
+- Easier to debug; metrics are readable on `/metrics` endpoint
+- No authentication needed between Prometheus and targets (in development)
+
+**Disadvantages**:
+
+- Metrics are only available at scrape intervals (not real-time)
+- If Prometheus fails, historical data may be lost
+- Pull-based doesn't work for batch jobs or ephemeral processes
+
+---
+
+#### Push-Based Communication (Logs and Traces)
+
+**How Push Works**:
+
+- Logs from containers are actively sent by Promtail to Loki
+- Traces are actively sent by OpenTelemetry instrumentation to Jaeger
+- Data is pushed immediately (or batched) rather than waiting for scrape
+
+**Why Push Model Fits Logs and Traces**:
+
+- **Immediate Data**: Logs and traces must be captured as they occur; pulling introduces latency
+- **Event-Driven**: Log events and span completions are discrete, not accumulated like metrics
+- **Volume Handling**: Push allows batching and buffering; Loki/Jaeger process incoming streams
+- **Correlation**: Push includes metadata (traceId, spanId) that correlates data across services
+- **Ephemeral Data**: Container logs and spans are transient; push ensures capture before loss
+
+**Advantages**:
+
+- Low latency; data available immediately
+- Works for containers that terminate (logs before cleanup)
+- Enables real-time alerting on trace patterns
+
+**Disadvantages**:
+
+- Requires active configuration on all services
+- Higher network overhead for high-volume scenarios
+- Potential data loss if Loki/Jaeger is temporarily unavailable (mitigated by buffering)
+
+---
+
+#### Comparison: Pull vs Push
+
+| Aspect                | Pull (Prometheus/Metrics)       | Push (Loki/Jaeger/Logs/Traces)       |
+| --------------------- | ------------------------------- | ------------------------------------ |
+| **Initiator**         | Prometheus connects to services | Services/agents connect to backends  |
+| **Latency**           | Interval-based (15s default)    | Near real-time (ms)                  |
+| **Service Knowledge** | Services unaware of Prometheus  | Services aware of collector          |
+| **Data Type**         | Cumulative, state-based         | Event-based, transient               |
+| **Scaling**           | Easy; add to config             | Requires instrumentation per service |
+| **Network**           | Single connection per interval  | Continuous or batched connections    |
+
+---
+
+### 3. OpenTelemetry and Distributed Tracing
+
+#### What is Distributed Tracing?
+
+In microservices, a single user request typically involves multiple services:
+
+```
+User Request:
+Client → API Gateway → Employees Service → Departments Service (validation) → Response
+```
+
+**Distributed tracing** tracks a request across all services by generating a unique identifier and passing it through each service. This enables:
+
+- Understanding end-to-end latency
+- Identifying bottleneck services
+- Correlating logs and metrics across requests
+- Root-cause analysis for failures
+
+#### TraceId and Span
+
+**TraceId**:
+
+- Unique identifier for an entire request across all services
+- Example: `4bf92f3577b34da6a3ce929d0e0e4736`
+- Passed in HTTP headers (standard: `traceparent`) from client to each service
+- All logs and metrics generated during this request reference the same traceId
+
+**Span**:
+
+- Represents a single operation or service execution within a trace
+- Example: "Employees Service: Query Database" is one span
+- Includes metadata:
+  - Start time and duration
+  - Service/operation name
+  - Status (SUCCESS, ERROR, etc.)
+  - Tags (attributes like `user_id`, `database_query`)
+- Multiple spans with the same traceId form a trace
+
+**Example Trace Structure**:
+
+```
+TraceId: 4bf92f3577b34da6a3ce929d0e0e4736
+├── Span 1: API Gateway (0ms-100ms)
+│   ├── Tag: method=POST
+│   ├── Tag: path=/employees-service/api/employees
+│   └── SpanId: a1b2c3d4e5f6g7h8
+├── Span 2: Employees Service (10ms-80ms)
+│   ├── Tag: service=employees
+│   ├── Tag: operation=create_employee
+│   ├── Tag: ParentSpanId=a1b2c3d4e5f6g7h8
+│   └── SpanId: b2c3d4e5f6g7h8i9
+├── Span 3: Departments Service (15ms-40ms)
+│   ├── Tag: service=departments
+│   ├── Tag: operation=validate_department
+│   ├── Tag: ParentSpanId=b2c3d4e5f6g7h8i9
+│   └── SpanId: c3d4e5f6g7h8i9j0
+└── Span 4: Database Query (20ms-35ms)
+    ├── Tag: database=postgresql
+    ├── Tag: query=INSERT INTO employees...
+    ├── Tag: ParentSpanId=b2c3d4e5f6g7h8i9
+    └── SpanId: d4e5f6g7h8i9j0k1
+```
+
+#### Why OpenTelemetry is Important in Microservices
+
+**Standards and Interoperability**:
+
+- OTEL provides a standardized API for instrumentation across languages
+- Services in different languages (Go, Python, Java, TypeScript) use consistent concepts
+- Trace context is exchanged via standard HTTP headers (W3C Trace Context)
+
+**Comprehensive Data Collection**:
+
+- Metrics: Request counts, latencies, error rates
+- Traces: Request flow across services with timing
+- Logs: Structured logs correlated by traceId
+- All three signals linked together for holistic observability
+
+**Vendor-Neutral**:
+
+- OTEL works with multiple backends (Jaeger, Zipkin, Datadog, etc.)
+- Not locked into a single observability platform
+
+**Automatic Context Propagation**:
+
+- OTEL automatically extracts and propagates traceId across service boundaries
+- Developers don't manually pass traceId; it's handled transparently
+
+#### W3C Trace Context for Interoperability
+
+**W3C Trace Context Specification**:
+
+- Standard HTTP header format for trace data: `traceparent` and `tracestate`
+- `traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-a1b2c3d4e5f6g7h8-01`
+  - `00`: Version
+  - `4bf92f3577b34da6a3ce929d0e0e4736`: TraceId
+  - `a1b2c3d4e5f6g7h8`: SpanId (parent)
+  - `01`: Trace flags (sampled)
+
+**Multi-Language Support in This Project**:
+
+- **Go (Employees Service)**: Uses `go.opentelemetry.io/otel` SDK
+- **Python (Departments Service)**: Uses `opentelemetry-api` and `opentelemetry-sdk`
+- **Java (Notifications Service)**: Uses `opentelemetry-java` SDK
+- **TypeScript/Node.js (Profiles Service)**: Uses `@opentelemetry/api` and `@opentelemetry/sdk-node`
+
+All libraries implement W3C Trace Context, ensuring traces flow correctly across language boundaries.
+
+---
+
+### 4. Choice Between Zipkin and Jaeger
+
+#### Decision: Jaeger
+
+**Justification for University Microservices Project**:
+
+**Simplicity and Quick Setup**:
+
+- Jaeger Docker image is lightweight (~100MB)
+- Single container deployment; no complex configuration
+- All-in-one default setup (no separate backend required initially)
+- Ideal for university projects with limited DevOps expertise
+
+**Docker Integration and Networking**:
+
+- Native support for OTLP (OpenTelemetry Protocol) on port 4317 (gRPC)
+- Legacy Jaeger protocol on port 6831 (UDP) for backward compatibility
+- Web UI on port 16686 for trace visualization
+- All ports easily exposed and networked in docker-compose
+
+**Lightweight Footprint**:
+
+- Jaeger all-in-one uses in-memory storage (suitable for testing/learning)
+- Elasticsearch backend optional (Zipkin requires external backend)
+- No additional dependencies for basic tracing
+
+**OpenTelemetry Native Support**:
+
+- Jaeger backend officially supports OTLP protocol
+- First-class integration with OpenTelemetry SDKs
+- No translation layer needed
+
+**Comparison with Zipkin**:
+
+| Aspect             | Jaeger                              | Zipkin                             |
+| ------------------ | ----------------------------------- | ---------------------------------- |
+| **Setup**          | Single image                        | Requires Elasticsearch or MySQL    |
+| **Storage**        | In-memory, Elasticsearch, Cassandra | Elasticsearch, MySQL, or in-memory |
+| **OTLP Support**   | Native                              | Via OpenTelemetry Collector        |
+| **UI**             | Modern, feature-rich                | Simpler but functional             |
+| **Performance**    | Optimized for scale                 | Good for development               |
+| **Learning Curve** | Moderate                            | Gentle                             |
+
+**Recommendation**: Jaeger is preferred for this project because it aligns with the goal of a lightweight, production-like setup suitable for university learning while maintaining compatibility with modern observability standards.
+
+---
+
+### 5. Metrics and Health Endpoints
+
+#### Microservice Endpoints
+
+Each microservice will expose two key endpoints for observability:
+
+**`/metrics` Endpoint**:
+
+- Exposes Prometheus-compatible metrics in OpenMetrics format
+- Available on each service's base port (8081, 8082, 8084, 8085)
+- Example: `http://localhost:8081/metrics` (Employees Service)
+
+**`/health` Endpoint**:
+
+- Returns service health status
+- Available on each service's base port
+- Example: `http://localhost:8081/health` (Employees Service)
+
+#### Expected Metrics
+
+Each service will expose the following metrics:
+
+**HTTP Request Metrics**:
+
+- `http_requests_total`: Total number of HTTP requests by method, path, and status code
+
+  - Labels: `method`, `path`, `status`
+  - Example: `http_requests_total{method="POST",path="/api/employees",status="201"} 145`
+
+- `http_request_duration_seconds`: Histogram of HTTP request latency
+  - Labels: `method`, `path`
+  - Buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0] seconds
+  - Example: `http_request_duration_seconds_bucket{method="GET",path="/api/employees",le="0.1"} 1230`
+
+**Error Metrics**:
+
+- `http_errors_total`: Total errors by error type and status code
+  - Labels: `error_type`, `status`
+  - Example: `http_errors_total{error_type="database_error",status="500"} 3`
+
+**Resource Metrics** (via standard Prometheus Go collector):
+
+- `process_cpu_seconds_total`: CPU time consumed by the process
+- `process_resident_memory_bytes`: Memory usage in bytes
+- `process_goroutines`: Number of active goroutines (Go services)
+- `jvm_memory_used_bytes`: JVM memory usage (Java services)
+
+#### Health Endpoint Responses
+
+**Healthy Response** (HTTP 200):
+
+```json
+{
+  "status": "UP",
+  "service": "employees-service",
+  "version": "1.0.0",
+  "timestamp": "2026-05-16T14:32:10Z",
+  "checks": {
+    "database": "UP",
+    "rabbitmq": "UP",
+    "dependencies": "UP"
+  }
+}
+```
+
+**Unhealthy Response** (HTTP 503):
+
+```json
+{
+  "status": "DOWN",
+  "service": "employees-service",
+  "version": "1.0.0",
+  "timestamp": "2026-05-16T14:32:10Z",
+  "checks": {
+    "database": "DOWN",
+    "rabbitmq": "UP",
+    "dependencies": "DEGRADED"
+  },
+  "error": "Cannot connect to database"
+}
+```
+
+**Health Check Logic**:
+
+- UP: Service is running and all critical dependencies are accessible
+- DOWN: Service is unavailable or critical dependencies are unreachable
+- DEGRADED: Service is running but some non-critical dependencies are unavailable
+
+---
+
+### 6. Structured Logging
+
+#### What are Structured JSON Logs?
+
+**Traditional Logs**:
+
+```
+2026-05-16 14:32:10 ERROR [EmployeeService] Failed to create employee: database connection timeout
+```
+
+**Structured JSON Logs**:
+
+```json
+{
+  "timestamp": "2026-05-16T14:32:10Z",
+  "level": "ERROR",
+  "service": "employees-service",
+  "operation": "create_employee",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "spanId": "a1b2c3d4e5f6g7h8",
+  "user_id": "user123",
+  "message": "Failed to create employee",
+  "error": "database connection timeout",
+  "error_code": "DB_CONN_TIMEOUT",
+  "retry_count": 3,
+  "duration_ms": 5000
+}
+```
+
+**Advantages**:
+
+- **Machine-Readable**: Fields are structured; easy to parse and filter
+- **Queryable**: Loki can search logs by any field (e.g., all errors for a specific user)
+- **Correlated**: `traceId` links logs to traces automatically
+- **Context-Rich**: All relevant information in one record
+- **Analytics**: Can aggregate and analyze logs as data
+
+#### Why Structured Logs are Useful
+
+**Debugging and Troubleshooting**:
+
+- Quickly filter logs by service, traceId, user_id, or error type
+- Correlate logs across multiple services for the same request
+
+**Performance Analysis**:
+
+- Track duration_ms to identify slow operations
+- Analyze error rates and patterns
+
+**Alert Integration**:
+
+- Alert on structured fields (e.g., "alert if error_code == 'DB_CONN_TIMEOUT'")
+- Aggregate similar errors and deduplicate alerts
+
+**Compliance and Auditing**:
+
+- Track user_id, operation, and timestamp for audit trails
+- Easily generate reports on system activity
+
+#### TraceId Correlation
+
+**How it Works**:
+
+1. OpenTelemetry SDK automatically extracts traceId from HTTP headers or generates a new one
+2. All logs emitted during a request automatically include the traceId
+3. When viewing traces in Jaeger, click on a trace to see all correlated logs in Loki
+4. When viewing logs in Loki, filter by traceId to see all related logs for a request
+
+**Example Flow**:
+
+```
+User Request with traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+├── Employees Service logs (all include traceId)
+│   └── "Creating employee for user123"
+├── Departments Service logs (same traceId)
+│   └── "Validating department_id=5"
+└── Jaeger traces (same traceId)
+    └── Visualizes request flow with timing
+
+Grafana View:
+- Click trace in Jaeger UI
+- Loki automatically shows all logs for that traceId
+- Developer sees full context of request execution
+```
+
+#### Loki and Promtail Integration
+
+**Promtail Configuration**:
+
+- Runs as a container in docker-compose
+- Mounts `/var/lib/docker/containers` to access container logs
+- Collects container stdout/stderr automatically
+- Adds labels: `service_name`, `container_name`, `pod_name` (simulated)
+- Forwards logs to Loki on port 3100
+
+**Loki Storage and Querying**:
+
+- Stores logs as time-series indexed by labels
+- LogQL queries: `{service_name="employees-service"} | json | traceId = "4bf92f3577b34da6a3ce929d0e0e4736"`
+- Grafana integrates Loki as a data source
+- Logs visualized alongside metrics in Grafana dashboards
+
+---
+
+### 7. Grafana Dashboards
+
+#### Planned Dashboard Panels
+
+**Main Observability Dashboard** will include the following panels:
+
+**Service Health Panel**:
+
+- Displays health status of each microservice (UP/DOWN)
+- Gauge visualization showing service availability
+- Data source: HTTP requests to `/health` endpoint or Prometheus scrape success
+- Color coding: Green (UP), Red (DOWN), Yellow (DEGRADED)
+
+**Request Rate Panel**:
+
+- Line chart showing requests per second over time
+- Separate lines for each service
+- PromQL query: `rate(http_requests_total[1m])`
+- Y-axis: Requests per second (RPS)
+- X-axis: Time (last 1 hour)
+
+**Latency Panel**:
+
+- Shows p50, p95, p99 percentiles of request latency
+- Data source: `http_request_duration_seconds` histogram buckets
+- PromQL query: `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[1m]))`
+- Visualization: Graph with multiple lines per percentile
+
+**HTTP Errors Panel**:
+
+- Stacked bar chart of error counts by status code
+- Includes 4xx and 5xx errors
+- PromQL query: `sum by (status) (rate(http_errors_total[1m]))`
+- Color per status code (red for 5xx, yellow for 4xx)
+
+**Resource Utilization Panel**:
+
+- CPU and memory usage per service
+- Dual Y-axis: CPU (%), Memory (MB)
+- PromQL queries:
+  - CPU: `rate(process_cpu_seconds_total[1m]) * 100`
+  - Memory: `process_resident_memory_bytes / 1024 / 1024`
+
+**Recent Logs Panel**:
+
+- Shows latest 100 structured JSON logs
+- Data source: Loki
+- LogQL query: `{service_name!=""}`
+- Includes: timestamp, level, service, message, traceId
+
+**Database Connection Pool Panel**:
+
+- Database connections in use vs available
+- Gauge per service
+- Indicates potential connection exhaustion
+
+#### PromQL Usage Examples
+
+**Query: Requests per second by service**:
+
+```promql
+sum by (job) (rate(http_requests_total[1m]))
+```
+
+**Query: Error rate (5xx errors)**:
+
+```promql
+sum(rate(http_errors_total{status=~"5.."}[1m])) / sum(rate(http_requests_total[1m])) * 100
+```
+
+**Query: P99 latency**:
+
+```promql
+histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+```
+
+**Query: Service availability**:
+
+```promql
+(1 - (increase(up{job="employees-service"}[5m] == 0)) / increase(up{job="employees-service"}[5m])) * 100
+```
+
+---
+
+### 8. Alerting Strategy
+
+#### Planned Alerts
+
+**Service Down Alert**:
+
+- **Condition**: Service health endpoint returns DOWN or is unreachable for > 1 minute
+- **Trigger**: `up{job="employees-service"} == 0`
+- **Severity**: CRITICAL
+- **Action**: Immediate notification to on-call engineer
+
+**High Latency Alert**:
+
+- **Condition**: P95 latency exceeds 2 seconds
+- **Trigger**: `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2`
+- **Severity**: WARNING
+- **Action**: Notify team; investigate performance bottlenecks
+
+**High Error Rate Alert**:
+
+- **Condition**: More than 5% of requests return 5xx status
+- **Trigger**: `(sum(rate(http_errors_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100) > 5`
+- **Severity**: CRITICAL
+- **Action**: Immediate notification; page on-call
+
+**Database Connection Exhaustion**:
+
+- **Condition**: Database connections available < 10%
+- **Trigger**: `(max_connections - used_connections) / max_connections * 100 < 10`
+- **Severity**: WARNING
+- **Action**: Investigate potential connection leak
+
+**Memory Usage Alert**:
+
+- **Condition**: Service memory exceeds 1.5GB
+- **Trigger**: `process_resident_memory_bytes > 1.5e9`
+- **Severity**: WARNING
+- **Action**: Monitor for potential OOM; investigate memory leaks
+
+#### Notification Channel: Discord
+
+**Choice Justification**:
+
+- **Low Setup Complexity**: Webhook integration is straightforward; no authentication server needed
+- **University-Friendly**: Discord is widely used in university communities; developers already have accounts
+- **Real-Time Notifications**: Instant alerts in team Discord channel; visible to all engineers
+- **Threaded Discussions**: Enables team collaboration on alert investigation
+- **Free Tier**: No cost for university project
+- **Integration**: Grafana has built-in Discord webhook support
+
+**Discord Webhook Configuration**:
+
+1. Create a Discord server channel: `#alerts`
+2. Create webhook: Channel Settings → Integrations → Webhooks → New Webhook
+3. Copy webhook URL: `https://discord.com/api/webhooks/xxxxx/yyyyy`
+4. In Grafana: Alerting → Notification Channels → New Channel
+   - Type: Discord
+   - Webhook URL: (paste from above)
+5. Attach to alert rule: Edit alert → Notifications → Select Discord channel
+
+**Example Discord Alert Message**:
+
+```
+🚨 CRITICAL Alert: High Error Rate
+
+Service: Employees Service
+Condition: Error rate > 5% for 5 minutes
+Current Value: 8.3%
+Timestamp: 2026-05-16 14:32:10 UTC
+Severity: CRITICAL
+Action: Check Employees Service logs for errors
+Link: http://localhost:3000/d/employees-dashboard
+```
+
+---
+
+### 9. Chaos Testing Plan
+
+#### Chaos Testing Strategy
+
+Chaos testing validates that the observability system correctly detects and alerts on failures.
+
+**Test Scenario 1: Service Container Failure**
+
+- **Action**: Stop a running microservice container
+  ```bash
+  docker stop <container_id>
+  ```
+- **Expected Observability Behavior**:
+  - Within 1 minute: Prometheus marks service as `down`
+  - Immediately: Health endpoint becomes unreachable
+  - Alert triggered: "Service Down" (CRITICAL)
+  - Discord notification sent
+  - Jaeger shows incomplete traces (orphaned spans)
+  - Loki shows connection errors in dependent services
+- **Verification**: Screenshots showing alert triggered and logged
+
+**Test Scenario 2: Database Latency Injection**
+
+- **Action**: Simulate high latency on PostgreSQL (using `tc` traffic control)
+  ```bash
+  docker exec <db_container> bash -c "tc qdisc add dev eth0 root netem delay 2000ms"
+  ```
+- **Expected Observability Behavior**:
+  - Request latency histogram increases dramatically
+  - P95 latency exceeds 2-second threshold
+  - "High Latency" alert triggered (WARNING)
+  - Grafana dashboard shows spike in latency panel
+  - Jaeger traces show database operation as bottleneck
+  - All requests still complete (no errors)
+- **Verification**: Screenshots showing latency spike and trace analysis
+
+**Test Scenario 3: Service Cascading Failure**
+
+- **Action**: Stop Departments Service (upstream dependency of Employees Service)
+  ```bash
+  docker stop departments-service
+  ```
+- **Expected Observability Behavior**:
+  - Employees Service requests to Departments Service fail
+  - Error rate on Employees Service increases to > 5%
+  - "High Error Rate" alert triggered (CRITICAL)
+  - Traces show failed span for Departments Service call
+  - Loki logs correlation shows error chain: Employees → Departments
+  - Dashboard shows errors concentrated in Employees Service
+- **Verification**: Screenshots showing error trace and log correlation
+
+**Test Scenario 4: Memory Leak Simulation**
+
+- **Action**: Deploy a modified version of a service that gradually increases memory usage
+- **Expected Observability Behavior**:
+  - Memory panel shows steady increase over time
+  - When memory approaches limit: "Memory Usage" alert triggered (WARNING)
+  - Prometheus `process_resident_memory_bytes` exceeds threshold
+  - Grafana alert notification sent to Discord
+- **Verification**: Screenshots showing memory trend and alert
+
+#### Verification Approach
+
+Screenshots will be added to the `screenshots/` directory with the following naming convention:
+
+- `chaos-test-1-service-down.png`: Service container stopped alert
+- `chaos-test-2-latency-spike.png`: Database latency injection impact
+- `chaos-test-3-error-cascade.png`: Error rate alert and log correlation
+- `chaos-test-4-memory-alert.png`: Memory threshold alert
+
+Each screenshot will include:
+
+- Grafana dashboard or alert UI showing the condition
+- Jaeger trace view if applicable
+- Discord notification or alert confirmation
+- Timestamp showing when alert was triggered
+
+Screenshots will be added in a later phase after implementation and testing.
+
+---
+
+### 10. Observability Architecture Diagram
+
+#### Observability Architecture Diagram
+
+A comprehensive architecture diagram will be created in draw.io to visualize the complete observability system and component interactions.
+
+**Planned diagram will include**:
+
+- **Microservices Tier**:
+
+  - API Gateway
+  - Employees Service (Go)
+  - Departments Service (Python)
+  - Notifications Service (Java)
+  - Profiles Service (TypeScript)
+
+- **Data Stores**:
+
+  - PostgreSQL instances (one per service)
+  - RabbitMQ message broker
+
+- **Observability Collection Tier**:
+
+  - OpenTelemetry instrumentation in each service
+  - Prometheus `/metrics` endpoints
+  - Promtail log collectors
+  - Jaeger agent/collector
+
+- **Observability Processing & Storage Tier**:
+
+  - Prometheus server
+  - Loki log aggregation
+  - Jaeger backend (all-in-one)
+
+- **Visualization & Alerting Tier**:
+
+  - Grafana dashboards
+  - Alert manager
+  - Discord webhook notifications
+
+- **Data Flow Arrows**:
+  - Prometheus scrape flow (pull)
+  - Loki ingest flow (push)
+  - Jaeger trace ingest flow (push)
+  - Grafana query flows (to Prometheus, Loki, Jaeger)
+  - Alert notifications to Discord
+
+**Status**: Diagram will be created using draw.io and added to this repository. Link will be provided once complete.
