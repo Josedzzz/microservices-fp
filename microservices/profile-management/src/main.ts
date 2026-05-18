@@ -6,16 +6,29 @@ import dotenv from "dotenv";
 import swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
 import path from "path";
+import * as prometheus from "prom-client";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8085;
 
+// Create Prometheus registry
+const register = new prometheus.Registry();
+
+// Collect default Node.js metrics
+prometheus.collectDefaultMetrics({ register });
+
 // Enable strict routing to distinguish between /swagger and /swagger/
 app.set("strict routing", true);
 
 app.use(express.json());
+
+// Prometheus /metrics endpoint (register before other routes)
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
+});
 
 // Swagger
 const swaggerDocument = YAML.load(path.join(__dirname, "../docs/swagger.yaml"));

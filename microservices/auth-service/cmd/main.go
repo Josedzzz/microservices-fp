@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rabbitmq/amqp091-go"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	_ "github.com/lib/pq"
 
@@ -77,6 +78,9 @@ func main() {
 	log.Println("RabbitMQ consumer started")
 
 	router := gin.Default()
+
+	// Prometheus /metrics endpoint (register before other routes)
+	router.GET("/metrics", gin.WrapF(promhttp.Handler().ServeHTTP))
 
 	// Swagger documentation
 	// Using a relative path makes it portable and avoids Gateway prefix issues

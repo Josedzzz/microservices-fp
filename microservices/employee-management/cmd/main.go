@@ -32,6 +32,7 @@ import (
 	_ "employee-management/docs" // <-- Swagger docs
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -69,6 +70,9 @@ func main() {
 	router.NoMethod(func(c *gin.Context) {
 		api.Error(c, http.StatusMethodNotAllowed, "Method not allowed")
 	})
+
+	// Prometheus /metrics endpoint (register before other routes)
+	router.GET("/metrics", gin.WrapF(promhttp.Handler().ServeHTTP))
 
 	// Swagger (Prefix-blind)
 	// Using a relative path allows the browser to find the YAML regardless of the Gateway prefix

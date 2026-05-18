@@ -4,6 +4,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from sqlalchemy.orm import Session
 from typing import List
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app import crud, models, schemas, auth
 from app.database import SessionLocal, engine
@@ -30,6 +31,9 @@ app = FastAPI(
     swagger_ui_parameters={"persistAuthorization": True},
     openapi_tags=[{"name": "Departments", "description": "Operations with departments"}],
 )
+
+# Initialize Prometheus instrumentation
+Instrumentator().instrument(app).expose(app)
 
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():

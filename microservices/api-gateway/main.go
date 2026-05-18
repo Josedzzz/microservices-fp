@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -64,6 +65,9 @@ func main() {
 
 	// Load HTML templates from the templates directory
 	router.LoadHTMLGlob("templates/*")
+
+	// Prometheus /metrics endpoint (register before other routes)
+	router.GET("/metrics", gin.WrapF(promhttp.Handler().ServeHTTP))
 
 	// Standard CORS Middleware
 	router.Use(corsMiddleware())
