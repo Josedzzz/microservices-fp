@@ -1,0 +1,82 @@
+# Prometheus Configuration for Microservices Observability
+# This configuration collects metrics from all microservices using pull-based scraping
+
+global:
+  scrape_interval: 15s      # Scrape targets every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  external_labels:
+    monitor: 'microservices-monitor'
+
+# Alerting configuration (placeholder for future alert rules)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+scrape_configs:
+  # ============================================
+  # API GATEWAY
+  # ============================================
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ============================================
+  # AUTH SERVICE (Go)
+  # Metrics endpoint varies per language/framework
+  # ============================================
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth-service:8083']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ============================================
+  # EMPLOYEES SERVICE (Go)
+  # Metrics endpoint varies per language/framework
+  # ============================================
+  - job_name: 'employees-service'
+    static_configs:
+      - targets: ['employees-service:8081']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ============================================
+  # DEPARTMENTS SERVICE (Python/FastAPI)
+  # Metrics endpoint varies per language/framework
+  # ============================================
+  - job_name: 'departments-service'
+    static_configs:
+      - targets: ['departments-service:8082']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ============================================
+  # NOTIFICATIONS SERVICE (Java/Spring Boot)
+  # Metrics endpoint varies per language/framework
+  # ============================================
+  - job_name: 'notifications-service'
+    static_configs:
+      - targets: ['notifications-service:8084']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ============================================
+  # PROFILES SERVICE (TypeScript/Node.js)
+  # Metrics endpoint varies per language/framework
+  # ============================================
+  - job_name: 'profiles-service'
+    static_configs:
+      - targets: ['profiles-service:8085']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ============================================
+  # PROMETHEUS SELF-MONITORING
+  # ============================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: '/metrics'

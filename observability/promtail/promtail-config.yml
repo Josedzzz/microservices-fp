@@ -1,0 +1,73 @@
+# Promtail Configuration for Log Collection
+# Automatically discovers and collects logs from Docker containers
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+positions:
+  filename: /tmp/positions.yaml
+
+scrape_configs:
+  # ============================================
+  # DOCKER CONTAINERS LOG SCRAPING
+  # ============================================
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Extract container name as service label
+      - source_labels: ['__meta_docker_container_name']
+        target_label: 'service_name'
+      
+      # Extract container ID
+      - source_labels: ['__meta_docker_container_id']
+        target_label: 'container_id'
+      
+      # Extract container image
+      - source_labels: ['__meta_docker_container_image_name']
+        target_label: 'image'
+      
+      # Extract Docker labels as job
+      - source_labels: ['__meta_docker_container_label_job']
+        target_label: 'job'
+      
+      # Skip non-microservice containers (optional filtering)
+      # Uncomment to filter specific containers
+      # - source_labels: ['__meta_docker_container_name']
+      #   regex: '(employees|departments|notifications|profiles|auth|api-gateway)'
+      #   action: keep
+    
+    pipeline_stages:
+      # Parse JSON logs if present
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            message: message
+            traceId: traceId
+            spanId: spanId
+      
+      # Add timestamp from JSON or container time
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02T15:04:05Z07:00"
+          action_on_failure: fudge
+      
+      # Add labels from parsed JSON
+      - labels:
+          level:
+          message:
+          traceId:
+          spanId:
+
+  # ============================================
+  # SYSLOG (Optional)
+  # ============================================
+  - job_name: syslog
+    syslog:
+      listen_address: 0.0.0.0:514
+      transport: tcp
+    relabel_configs:
+      - source_labels: ['__syslog_message_hostname']
+        target_label: 'hostname'
