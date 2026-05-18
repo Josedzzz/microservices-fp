@@ -1456,6 +1456,670 @@ Each service will expose the following metrics:
 
 ---
 
+### 5.1 Prometheus Configuration: Pull-Based Metrics Collection
+
+#### Configuration File Location
+
+The Prometheus configuration is located at:
+
+```
+observability/prometheus/prometheus.yml
+```
+
+This file defines all microservices as scrape targets and specifies metrics collection intervals and paths.
+
+#### Global Configuration
+
+```yaml
+global:
+  scrape_interval: 15s      # Scrape targets every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  external_labels:
+    monitor: 'microservices-monitor'
+```
+
+**Key Settings**:
+
+- **scrape_interval**: How often Prometheus pulls metrics from each target (15 seconds)
+- **evaluation_interval**: How frequently alert rules are evaluated (15 seconds)
+- **external_labels**: Metadata added to all metrics scraped (helps identify Prometheus instance)
+
+#### How Docker Service Names Work in Prometheus
+
+In docker-compose networks, all services can be reached by their **service name** as hostname (not IP addresses):
+
+```yaml
+services:
+  employees-service:
+    image: employees:latest
+    ports:
+      - "8081:8081"
+    networks:
+      - microservices-network
+```
+
+**Prometheus Target Configuration**:
+
+```yaml
+- job_name: 'employees-service'
+  static_configs:
+    - targets: ['employees-service:8081']  # Docker DNS resolves to service IP
+  metrics_path: '/metrics'
+```
+
+**Why This Works**:
+
+1. Prometheus container shares the same `microservices-network` as all microservices
+2. Docker embedded DNS server resolves `employees-service` hostname to the service's current IP
+3. If a service restarts, Docker automatically updates the DNS resolution
+4. Prometheus can reach services by name without hardcoding IPs
+
+**Advantages**:
+
+- Service IPs can change (container restarts); names stay constant
+- Configuration is portable across environments
+- Easy horizontal scaling; new service instances automatically available
+
+#### Framework-Specific Metrics Endpoints
+
+Each microservice exposes metrics at a **framework-specific path**:
+
+**Go Services** (`api-gateway`, `auth-service`, `employees-service`):
+
+```
+GET http://employees-service:8081/metrics
+```
+
+- Uses `prometheus/client_golang` library
+- Standard Prometheus text format endpoint
+- Must be explicitly implemented in Go code
+
+**Python/FastAPI** (`departments-service`):
+
+```
+GET http://departments-service:8082/metrics
+```
+
+- Auto-exposed by `prometheus-fastapi-instrumentator` package
+- No manual implementation needed (middleware does it)
+- Immediately available after package installation
+
+**Java/Spring Boot** (`notifications-service`):
+
+```
+GET http://notifications-service:8084/actuator/prometheus
+```
+
+- Exposed by Spring Boot Actuator + Micrometer
+- Different path from other services (`/actuator/prometheus` not `/metrics`)
+- Configured in `prometheus.yml` at line 165
+
+**TypeScript/Node.js/Express** (`profiles-service`):
+
+```
+GET http://profiles-service:8085/metrics
+```
+
+- Uses `prom-client` npm package
+- Manual endpoint implementation required
+- Prometheus registry middleware tracks requests automatically
+
+#### Scrape Job Configuration
+
+Each microservice has a corresponding **scrape job** in `prometheus.yml`:
+
+```yaml
+- job_name: 'employees-service'
+  static_configs:
+    - targets: ['employees-service:8081']
+  metrics_path: '/metrics'
+  scrape_interval: 15s
+  scrape_timeout: 10s
+```
+
+**What Each Field Means**:
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| `job_name` | `employees-service` | Identifier for this scrape job (used in Prometheus UI and alerts) |
+| `targets` | `['employees-service:8081']` | Docker service name and port (DNS resolution automatic) |
+| `metrics_path` | `/metrics` | HTTP endpoint that returns Prometheus metrics |
+| `scrape_interval` | `15s` | How often Prometheus polls this service |
+| `scrape_timeout` | `10s` | Maximum time to wait for response before timeout |
+
+#### Accessing Prometheus UI
+
+Once Prometheus is running, access the web interface:
+
+```
+http://localhost:9090
+```
+
+**Key Sections**:
+
+- **Status → Targets**: Shows all scrape targets and their health (UP/DOWN)
+- **Graph**: Query metrics using PromQL
+- **Alerts**: View active/inactive alert rules
+
+**Example Query in Prometheus UI**:
+
+```promql
+http_requests_total{job="employees-service"}
+```
+
+This shows the total HTTP requests for the employees service (once metrics are being exposed).
+
+#### Understanding Metrics Collection Flow
+
+**Step 1: Service Startup**
+
+```
+1. docker-compose up starts employees-service
+2. Service starts HTTP server on port 8081
+3. Service registers /metrics endpoint (returns metrics in OpenMetrics format)
+```
+
+**Step 2: Prometheus Scraping**
+
+```
+1. Prometheus reads prometheus.yml configuration
+2. Every 15 seconds, Prometheus makes HTTP GET request:
+   GET http://employees-service:8081/metrics
+3. Service responds with metrics in text format:
+   http_requests_total{method="POST",path="/api/employees",status="201"} 145
+   http_request_duration_seconds_bucket{method="GET",path="/api/employees",le="0.1"} 1230
+   ...
+```
+
+**Step 3: Storage and Visualization**
+
+```
+1. Prometheus parses the text response
+2. Stores metrics in time-series database (TSDB)
+3. Grafana queries Prometheus via PromQL
+4. Dashboards display real-time metrics
+```
+
+**Step 4: Metric Aging**
+
+```
+1. If service crashes or metrics endpoint becomes unavailable:
+   - Prometheus marks metrics as "stale" after scrape_interval × 5
+   - Old metrics are retained for historical analysis (default retention: 15 days)
+   - Service shows as DOWN in Prometheus UI
+```
+
+#### Why Pull-Based Scraping is Used Instead of Push
+
+**Pull Model (Prometheus)**:
+
+```
+Prometheus → [HTTP GET] → Service:/metrics → Response with metrics
+```
+
+**Advantages**:
+
+- Services are **stateless**: No knowledge of monitoring backend required
+- **Horizontal scaling**: Add new services; Prometheus auto-detects (just add to config)
+- **Rate control**: Prometheus controls scrape frequency
+- **No dependencies**: Services don't need to know Prometheus exists
+
+**Disadvantages**:
+
+- Metrics only collected every 15 seconds (interval-based, not real-time)
+- If service crashes between scrapes, some data may be missed
+- Requires explicit endpoint implementation per framework
+
+---
+
+### 5.2 Per-Service Metrics Implementation Guide
+
+This section provides step-by-step instructions for implementing `/metrics` endpoints in each microservice. Each service requires framework-specific instrumentation before Prometheus can collect metrics.
+
+#### Go Services (api-gateway, auth-service, employees-service)
+
+**Required Changes**:
+
+1. **Add Dependency** to `go.mod`:
+
+```bash
+cd microservices/<service-name>
+go get github.com/prometheus/client_golang/prometheus
+go get github.com/prometheus/client_golang/prometheus/promhttp
+```
+
+2. **Create Metrics Endpoint** in `main.go`:
+
+```go
+import (
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+    "net/http"
+)
+
+func main() {
+    // ... existing code ...
+    
+    // Expose /metrics endpoint for Prometheus
+    http.Handle("/metrics", promhttp.Handler())
+    
+    // Start HTTP server (make sure this doesn't conflict with main router)
+    go func() {
+        http.ListenAndServe(":8081", nil)  // Adjust port as needed
+    }()
+    
+    // ... rest of application ...
+}
+```
+
+**For Gin Framework** (api-gateway):
+
+```go
+import (
+    "github.com/gin-gonic/gin"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+func main() {
+    router := gin.Default()
+    
+    // Register Prometheus endpoint
+    router.GET("/metrics", gin.WrapF(promhttp.Handler().ServeHTTP))
+    
+    router.Run(":8080")
+}
+```
+
+3. **Restart Service**:
+
+```bash
+docker-compose up --build api-gateway
+```
+
+4. **Verify Metrics Endpoint**:
+
+```bash
+curl http://localhost:8080/metrics
+# Should return:
+# # HELP go_goroutines Number of goroutines that currently exist.
+# # TYPE go_goroutines gauge
+# go_goroutines 12
+```
+
+**Auto-Collected Metrics** (without additional code):
+
+- `go_goroutines`: Active goroutines
+- `go_threads`: Active threads
+- `process_cpu_seconds_total`: CPU time
+- `process_resident_memory_bytes`: Memory usage
+- `go_gc_duration_seconds`: Garbage collection timing
+
+---
+
+#### Python/FastAPI (departments-service)
+
+**Required Changes**:
+
+1. **Add Package** to `requirements.txt`:
+
+```
+prometheus-fastapi-instrumentator==5.11.3
+```
+
+2. **Update `main.py`** (or `app.py`):
+
+```python
+from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
+
+app = FastAPI()
+
+# Initialize Prometheus instrumentation
+Instrumentator().instrument(app).expose(app)
+
+@app.get("/api/departments")
+async def get_departments():
+    return []
+```
+
+3. **Rebuild and Restart**:
+
+```bash
+docker-compose up --build departments-service
+```
+
+4. **Verify Metrics Endpoint**:
+
+```bash
+curl http://localhost:8082/metrics
+# Should return metrics automatically collected by the instrumentator
+```
+
+**Auto-Collected Metrics** (automatic via `prometheus-fastapi-instrumentator`):
+
+- `http_requests_total`: Total HTTP requests
+- `http_request_duration_seconds`: Request latency histogram
+- `http_requests_in_progress`: Active requests
+- `http_request_size_bytes`: Request body size
+- `http_response_size_bytes`: Response body size
+
+**No additional code needed for basic metrics**. The instrumentator automatically:
+
+- Tracks all endpoints
+- Measures request latency
+- Records status codes
+- Labels metrics by method, path, status
+
+---
+
+#### Java/Spring Boot (notifications-service)
+
+**Required Changes**:
+
+1. **Add Dependencies** to `pom.xml`:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
+
+2. **Configure** `application.properties`:
+
+```properties
+# Enable Prometheus metrics endpoint
+management.endpoints.web.exposure.include=prometheus,health
+management.metrics.export.prometheus.enabled=true
+management.endpoint.prometheus.enabled=true
+```
+
+3. **Rebuild and Restart**:
+
+```bash
+docker-compose up --build notifications-service
+```
+
+4. **Verify Metrics Endpoint**:
+
+```bash
+curl http://localhost:8084/actuator/prometheus
+# Should return metrics from Spring Boot Actuator
+```
+
+**Auto-Collected Metrics** (via Spring Boot Actuator + Micrometer):
+
+- `http_server_requests_seconds`: HTTP request latency (histogram)
+- `process_cpu_usage`: CPU usage percentage
+- `process_resident_memory_bytes`: Memory usage
+- `jvm_memory_used_bytes`: JVM heap memory
+- `jvm_memory_max_bytes`: JVM max heap
+- `jvm_gc_collection_seconds`: Garbage collection timing
+- `tomcat_threads_current`: Active Tomcat threads
+
+**Note**: Spring Boot Actuator exposes metrics at `/actuator/prometheus` (not `/metrics`). The prometheus.yml is already configured for this path (line 165).
+
+---
+
+#### TypeScript/Node.js/Express (profiles-service)
+
+**Required Changes**:
+
+1. **Add Package** to `package.json`:
+
+```bash
+cd microservices/profile-management
+npm install prom-client
+npm install --save-dev @types/prom-client
+```
+
+Or manually add to `package.json`:
+
+```json
+{
+  "dependencies": {
+    "prom-client": "^14.2.0"
+  }
+}
+```
+
+2. **Update `src/index.ts`** (or main app file):
+
+```typescript
+import express from 'express';
+import * as prometheus from 'prom-client';
+
+const app = express();
+
+// Create a Prometheus registry
+const register = new prometheus.Registry();
+
+// Collect default metrics
+prometheus.collectDefaultMetrics({ register });
+
+// Expose /metrics endpoint
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
+
+// Add default route for health checks
+app.get('/health', (req, res) => {
+  res.json({ status: 'UP' });
+});
+
+// ... rest of routes ...
+
+app.listen(8085, () => {
+  console.log('Server running on port 8085');
+});
+```
+
+3. **Rebuild and Restart**:
+
+```bash
+docker-compose up --build profiles-service
+```
+
+4. **Verify Metrics Endpoint**:
+
+```bash
+curl http://localhost:8085/metrics
+# Should return Node.js and custom metrics
+```
+
+**Auto-Collected Metrics** (via `prom-client`):
+
+- `nodejs_version_info`: Node.js version
+- `nodejs_memory_heap_size_total_bytes`: Total heap size
+- `nodejs_memory_heap_used_bytes`: Heap memory in use
+- `nodejs_memory_rss_bytes`: Resident set size
+- `nodejs_event_loop_lag_seconds`: Event loop lag
+- `process_cpu_seconds_total`: CPU time
+- `nodejs_active_handles_total`: Active handles/timers
+
+---
+
+### Custom Metrics Per Service
+
+Beyond the auto-collected metrics, each service should implement **custom metrics** relevant to its domain:
+
+#### Employees Service (Go)
+
+Add to `main.go` after importing prometheus:
+
+```go
+import (
+    "github.com/prometheus/client_golang/prometheus"
+)
+
+var (
+    employeesTotal = prometheus.NewGaugeVec(
+        prometheus.GaugeOpts{
+            Name: "employees_total",
+            Help: "Total number of employees in the system",
+        },
+        []string{"department"},
+    )
+    employeeOperations = prometheus.NewCounterVec(
+        prometheus.CounterOpts{
+            Name: "employee_operations_total",
+            Help: "Total employee operations (create, read, update, delete)",
+        },
+        []string{"operation", "status"},
+    )
+)
+
+func init() {
+    prometheus.MustRegister(employeesTotal, employeeOperations)
+}
+
+// Usage in handlers:
+func CreateEmployee(w http.ResponseWriter, r *http.Request) {
+    // ... create employee ...
+    employeeOperations.WithLabelValues("create", "success").Inc()
+    employeesTotal.WithLabelValues("engineering").Inc()
+}
+```
+
+#### Departments Service (Python)
+
+Add to `main.py` after FastAPI app initialization:
+
+```python
+from prometheus_client import Counter, Gauge
+
+# Custom metrics
+departments_total = Gauge('departments_total', 'Total number of departments')
+department_operations = Counter(
+    'department_operations_total',
+    'Total department operations',
+    ['operation', 'status']
+)
+
+@app.post("/api/departments")
+async def create_department(dept: DepartmentSchema):
+    # ... create department ...
+    department_operations.labels(operation="create", status="success").inc()
+    departments_total.set(get_department_count())
+    return dept
+```
+
+#### Notifications Service (Java)
+
+Add to Spring Boot service class:
+
+```java
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+
+@Service
+public class NotificationService {
+    private final Counter notificationsSent;
+    private final Counter notificationsFailed;
+
+    public NotificationService(MeterRegistry meterRegistry) {
+        this.notificationsSent = Counter.builder("notifications_sent_total")
+            .description("Total notifications sent")
+            .tag("service", "notifications")
+            .register(meterRegistry);
+        
+        this.notificationsFailed = Counter.builder("notifications_failed_total")
+            .description("Total notifications failed")
+            .tag("service", "notifications")
+            .register(meterRegistry);
+    }
+
+    public void sendNotification(Notification notification) {
+        try {
+            // ... send notification ...
+            notificationsSent.increment();
+        } catch (Exception e) {
+            notificationsFailed.increment();
+        }
+    }
+}
+```
+
+#### Profiles Service (TypeScript)
+
+Add to `src/index.ts`:
+
+```typescript
+const profileOperations = new prometheus.Counter({
+  name: 'profile_operations_total',
+  help: 'Total profile operations (create, read, update, delete)',
+  labelNames: ['operation', 'status'],
+  registers: [register],
+});
+
+const profileEventsProcessed = new prometheus.Counter({
+  name: 'profile_events_processed_total',
+  help: 'Total profile events processed from RabbitMQ',
+  labelNames: ['event_type', 'status'],
+  registers: [register],
+});
+
+// Usage in handlers:
+app.post('/api/profiles', (req, res) => {
+  try {
+    // ... create profile ...
+    profileOperations.inc({ operation: 'create', status: 'success' });
+    res.json({ success: true });
+  } catch (error) {
+    profileOperations.inc({ operation: 'create', status: 'error' });
+    res.status(500).json({ error: 'Failed to create profile' });
+  }
+});
+```
+
+---
+
+### Testing Metrics Collection
+
+Once all services have implemented `/metrics` endpoints, verify collection:
+
+**Step 1: Start all services**
+
+```bash
+docker-compose up --build
+```
+
+**Step 2: Access Prometheus UI**
+
+Open http://localhost:9090
+
+**Step 3: Check Target Status**
+
+Navigate to **Status → Targets**. All services should show:
+
+```
+✓ api-gateway:8080/metrics (UP)
+✓ auth-service:8083/metrics (UP)
+✓ employees-service:8081/metrics (UP)
+✓ departments-service:8082/metrics (UP)
+✓ notifications-service:8084/actuator/prometheus (UP)
+✓ profiles-service:8085/metrics (UP)
+✓ prometheus:9090/metrics (UP)
+```
+
+**Step 4: Query Metrics in Prometheus UI**
+
+In the Graph section, try queries:
+
+- `http_requests_total` - Total requests across all services
+- `process_resident_memory_bytes` - Memory usage per service
+- `go_goroutines{job="employees-service"}` - Goroutines in employees service
+
+**Step 5: Visualize in Grafana**
+
+http://localhost:3000 will automatically load Prometheus as a data source. Create dashboards to visualize metrics.
+
+---
+
 ### 6. Structured Logging
 
 #### What are Structured JSON Logs?

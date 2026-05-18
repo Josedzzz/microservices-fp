@@ -1,5 +1,9 @@
 # Prometheus Configuration for Microservices Observability
 # This configuration collects metrics from all microservices using pull-based scraping
+# 
+# IMPORTANT: This configuration assumes services will expose metrics endpoints.
+# Services MUST implement metrics instrumentation before this configuration will work.
+# See each service section for implementation requirements.
 
 global:
   scrape_interval: 15s      # Scrape targets every 15 seconds
@@ -15,68 +19,199 @@ alerting:
 
 scrape_configs:
   # ============================================
-  # API GATEWAY
+  # API GATEWAY (Go / Gin Framework)
   # ============================================
+  # Service: API Gateway (reverse proxy and security layer)
+  # Framework: Gin Framework + Go Standard Library
+  # Port: 8080
+  # 
+  # Metrics Implementation TODO:
+  # - Add prometheus/client_golang dependency
+  # - Create /metrics endpoint using prometheus.Handler()
+  # - Register HTTP middleware to track requests
+  # 
+  # Expected Metrics:
+  # - http_requests_total: Counter for total requests
+  # - http_request_duration_seconds: Histogram for request latency
+  # - process_cpu_seconds_total: CPU time
+  # - process_resident_memory_bytes: Memory usage
   - job_name: 'api-gateway'
     static_configs:
       - targets: ['api-gateway:8080']
     metrics_path: '/metrics'
     scrape_interval: 15s
+    scrape_timeout: 10s
 
   # ============================================
-  # AUTH SERVICE (Go)
-  # Metrics endpoint varies per language/framework
+  # AUTH SERVICE (Go / Standard Library)
   # ============================================
+  # Service: Authentication and JWT token management
+  # Framework: Go Standard Library (net/http)
+  # Port: 8083
+  # 
+  # Metrics Implementation TODO:
+  # - Add prometheus/client_golang dependency
+  # - Create /metrics endpoint using prometheus.Handler()
+  # - Implement custom metrics for:
+  #   * auth_token_validations_total
+  #   * auth_failures_total
+  #   * auth_password_resets_total
+  # 
+  # Expected Metrics:
+  # - http_requests_total
+  # - http_request_duration_seconds
+  # - auth_token_validations_total (custom)
+  # - auth_failures_total (custom)
   - job_name: 'auth-service'
     static_configs:
       - targets: ['auth-service:8083']
     metrics_path: '/metrics'
     scrape_interval: 15s
+    scrape_timeout: 10s
 
   # ============================================
-  # EMPLOYEES SERVICE (Go)
-  # Metrics endpoint varies per language/framework
+  # EMPLOYEES SERVICE (Go / Standard Library)
   # ============================================
+  # Service: Employee management and CRUD operations
+  # Framework: Go Standard Library with Swagger
+  # Port: 8081
+  # 
+  # Metrics Implementation TODO:
+  # - Add prometheus/client_golang dependency
+  # - Create /metrics endpoint using prometheus.Handler()
+  # - Implement custom metrics for:
+  #   * employees_total: Gauge for total employees
+  #   * employee_operations_total: Counter (create/read/update/delete)
+  #   * department_validations_total: Counter for cross-service calls
+  # 
+  # Expected Metrics:
+  # - http_requests_total
+  # - http_request_duration_seconds
+  # - employees_total (custom gauge)
+  # - employee_operations_total (custom counter)
+  # - department_validations_total (custom counter)
   - job_name: 'employees-service'
     static_configs:
       - targets: ['employees-service:8081']
     metrics_path: '/metrics'
     scrape_interval: 15s
+    scrape_timeout: 10s
 
   # ============================================
-  # DEPARTMENTS SERVICE (Python/FastAPI)
-  # Metrics endpoint varies per language/framework
+  # DEPARTMENTS SERVICE (Python / FastAPI)
   # ============================================
+  # Service: Department management
+  # Framework: FastAPI + Uvicorn
+  # Port: 8082
+  # Dependencies: fastapi, uvicorn, sqlalchemy
+  # 
+  # Metrics Implementation TODO:
+  # - Install prometheus-fastapi-instrumentator: pip install prometheus-fastapi-instrumentator
+  # - Add to main.py:
+  #     from prometheus_fastapi_instrumentator import Instrumentator
+  #     Instrumentator().instrument(app).expose(app)
+  # - This automatically exposes /metrics endpoint
+  # 
+  # Auto-Collected Metrics:
+  # - http_requests_total
+  # - http_request_duration_seconds
+  # - http_requests_in_progress
+  # 
+  # Expected Custom Metrics:
+  # - departments_total: Gauge for total departments
+  # - department_operations_total: Counter (create/read/update/delete)
   - job_name: 'departments-service'
     static_configs:
       - targets: ['departments-service:8082']
     metrics_path: '/metrics'
     scrape_interval: 15s
+    scrape_timeout: 10s
 
   # ============================================
-  # NOTIFICATIONS SERVICE (Java/Spring Boot)
-  # Metrics endpoint varies per language/framework
+  # NOTIFICATIONS SERVICE (Java / Spring Boot 3.2.3)
   # ============================================
+  # Service: Event-driven notifications management
+  # Framework: Spring Boot 3.2.3 with Spring Web + AMQP
+  # Port: 8084
+  # 
+  # Metrics Implementation TODO:
+  # - Add dependency to pom.xml:
+  #     <dependency>
+  #         <groupId>org.springframework.boot</groupId>
+  #         <artifactId>spring-boot-starter-actuator</artifactId>
+  #     </dependency>
+  #     <dependency>
+  #         <groupId>io.micrometer</groupId>
+  #         <artifactId>micrometer-registry-prometheus</artifactId>
+  #     </dependency>
+  # - Add to application.properties:
+  #     management.endpoints.web.exposure.include=prometheus,health
+  #     management.metrics.export.prometheus.enabled=true
+  # 
+  # Auto-Collected Metrics (via Spring Boot Actuator + Micrometer):
+  # - http_server_requests_seconds: HTTP request latency
+  # - process_cpu_usage: CPU usage percentage
+  # - process_resident_memory_bytes: Memory usage
+  # - jvm_memory_used_bytes: JVM heap usage
+  # - jvm_gc_memory_promoted_bytes: Garbage collection metrics
+  # 
+  # Expected Custom Metrics:
+  # - notifications_sent_total: Counter for sent notifications
+  # - notification_processing_duration_seconds: Histogram for event processing
+  # - notifications_failed_total: Counter for failed notifications
   - job_name: 'notifications-service'
     static_configs:
       - targets: ['notifications-service:8084']
-    metrics_path: '/metrics'
+    metrics_path: '/actuator/prometheus'  # Spring Boot Actuator endpoint
     scrape_interval: 15s
+    scrape_timeout: 10s
 
   # ============================================
-  # PROFILES SERVICE (TypeScript/Node.js)
-  # Metrics endpoint varies per language/framework
+  # PROFILES SERVICE (TypeScript/Node.js / Express)
   # ============================================
+  # Service: User profile management
+  # Framework: Express.js with TypeScript
+  # Port: 8085
+  # 
+  # Metrics Implementation TODO:
+  # - Install prom-client: npm install prom-client
+  # - Create metrics middleware in Express:
+  #     import prometheus from 'prom-client';
+  #     const register = new prometheus.Registry();
+  #     app.get('/metrics', async (req, res) => {
+  #       res.set('Content-Type', register.contentType);
+  #       res.end(await register.metrics());
+  #     });
+  # - Implement middleware to track requests
+  # 
+  # Auto-Collected Metrics (via express middleware):
+  # - http_requests_total: Total HTTP requests
+  # - http_request_duration_seconds: Request latency histogram
+  # - nodejs_event_loop_lag_seconds: Event loop lag
+  # - nodejs_memory_heap_size_total_bytes: Heap memory
+  # - nodejs_active_handles_total: Active handles
+  # 
+  # Expected Custom Metrics:
+  # - profile_operations_total: Counter for profile CRUD operations
+  # - profile_events_processed_total: Counter for RabbitMQ events
   - job_name: 'profiles-service'
     static_configs:
       - targets: ['profiles-service:8085']
     metrics_path: '/metrics'
     scrape_interval: 15s
+    scrape_timeout: 10s
 
   # ============================================
   # PROMETHEUS SELF-MONITORING
   # ============================================
+  # Monitors Prometheus itself to ensure it's functioning correctly
+  # Built-in metrics include:
+  # - prometheus_tsdb_*: TSDB storage metrics
+  # - prometheus_sd_*: Service discovery metrics
+  # - prometheus_scrape_*: Scraping performance metrics
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
     metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
