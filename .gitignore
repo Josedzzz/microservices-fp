@@ -28,6 +28,19 @@ __pycache__/
 # Virtual environments
 .venv/
 venv/
+
+# =========================
+# Go
+# =========================
+# Compiled binaries (service names)
+api-gateway
+auth-service
+employee-management
+
+# =========================
+# Tracing & Generated files
+# =========================
+tracing.ts.disabled
 env/
 ENV/
 
