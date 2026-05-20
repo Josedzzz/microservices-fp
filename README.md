@@ -4,9 +4,7 @@ A microservices-based system for managing employee onboarding and offboarding pr
 
 ## By:
 
-Jose David Amaya
-Daniel Felipe Correa
-Juan Jose Arce
+Jose David Amaya - Daniel Felipe Correa - Juan Jose Arce
 
 ## Services Overview
 
