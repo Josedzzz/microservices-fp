@@ -1,0 +1,128 @@
+apiVersion: 1
+groups:
+  - name: microservices-alerts
+    folder: Microservices Alerts
+    interval: 1m
+    rules:
+      - uid: alert_service_down
+        title: Service Down
+        condition: C
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: prometheus_uid
+            model:
+              expr: 'up{job=~"api-gateway|auth-service|employees-service|departments-service|notifications-service|profiles-service"} == 0'
+              interval: ""
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        noDataState: OK
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: 'Service {{ $labels.job }} is DOWN'
+          description: 'Service {{ $labels.job }} (instance: {{ $labels.instance }}) has been unreachable for more than 1 minute. Check if the container is running and responsive.'
+          runbook_url: 'https://wiki.example.com/runbooks/service-down'
+        labels:
+          severity: critical
+          team: platform
+
+      - uid: alert_high_error_rate
+        title: High Error Rate (5xx)
+        condition: C
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus_uid
+            model:
+              expr: 'sum by(job, route) (rate(http_request_duration_seconds_count{status_code=~"5.*"}[5m])) / clamp_min(sum by(job, route) (rate(http_request_duration_seconds_count[5m])), 1)'
+              interval: ""
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0.1
+        noDataState: OK
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: 'High Error Rate on {{ $labels.job }} / {{ $labels.route }}'
+          description: 'Route {{ $labels.route }} on {{ $labels.job }} has an HTTP 5xx error rate exceeding 10% over the last 5 minutes. Check application logs and investigate the root cause.'
+          runbook_url: 'https://wiki.example.com/runbooks/high-error-rate'
+        labels:
+          severity: warning
+          team: platform
+
+      - uid: alert_high_latency
+        title: High Request Latency (p95 > 500ms)
+        condition: C
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus_uid
+            model:
+              expr: 'histogram_quantile(0.95, sum by(le, job, route) (rate(http_request_duration_seconds_bucket[5m])))'
+              interval: ""
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0.5
+        noDataState: OK
+        execErrState: Alerting
+        for: 3m
+        annotations:
+          summary: 'High Latency on {{ $labels.job }} / {{ $labels.route }}'
+          description: 'Route {{ $labels.route }} on {{ $labels.job }} has p95 latency exceeding 500ms. Consider investigating performance bottlenecks or scaling the service.'
+          runbook_url: 'https://wiki.example.com/runbooks/high-latency'
+        labels:
+          severity: warning
+          team: platform

@@ -1,13 +1,12 @@
-# Grafana Datasources Provisioning Configuration
-# Automatically configures Prometheus and Loki datasources on Grafana startup
-
 apiVersion: 1
 
-datasources:
-  # ============================================
-  # PROMETHEUS DATASOURCE (METRICS)
-  # ============================================
+deleteDatasources:
   - name: Prometheus
+  - name: Loki
+
+datasources:
+  - name: Prometheus
+    uid: prometheus_uid
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -18,10 +17,8 @@ datasources:
     jsonData:
       timeInterval: 15s
 
-  # ============================================
-  # LOKI DATASOURCE (LOGS)
-  # ============================================
   - name: Loki
+    uid: loki_uid
     type: loki
     access: proxy
     url: http://loki:3100

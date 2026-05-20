@@ -3,8 +3,6 @@ version: "3.9"
 networks:
   onboarding-network:
     driver: bridge
-  microservices-network:
-    driver: bridge
 
 volumes:
   postgres_employees_data:
@@ -390,14 +388,14 @@ services:
     image: prom/prometheus:latest
     container_name: prometheus
     ports:
-      - "9090:9090"
+      - "9091:9090"
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
     networks:
-      - microservices-network
+      - onboarding-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
@@ -417,14 +415,17 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_SECURITY_ADMIN_USER: admin
       GF_INSTALL_PLUGINS: grafana-clock-panel
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    entrypoint:
+      - /entrypoint.sh
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+      - ./observability/grafana/entrypoint.sh:/entrypoint.sh:ro
     depends_on:
       - prometheus
-      - loki
     networks:
-      - microservices-network
+      - onboarding-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
@@ -443,9 +444,10 @@ services:
     volumes:
       - ./observability/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
+    command:
+      - '-config.file=/etc/loki/local-config.yaml'
     networks:
-      - microservices-network
+      - onboarding-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
@@ -467,7 +469,7 @@ services:
     depends_on:
       - loki
     networks:
-      - microservices-network
+      - onboarding-network
     restart: unless-stopped
 
   # ============================================
@@ -481,7 +483,7 @@ services:
     environment:
       STORAGE_TYPE: mem
     networks:
-      - microservices-network
+      - onboarding-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9411/health"]
@@ -500,7 +502,7 @@ services:
     volumes:
       - registry_data:/var/lib/registry
     networks:
-      - microservices-network
+      - onboarding-network
     restart: unless-stopped
 
   # ============================================
@@ -516,7 +518,7 @@ services:
     volumes:
       - sonar_db_data:/var/lib/postgresql/data
     networks:
-      - microservices-network
+      - onboarding-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sonar -d sonarqube"]
       interval: 10s
@@ -546,7 +548,7 @@ services:
       - sonarqube_logs:/opt/sonarqube/logs
       - sonarqube_extensions:/opt/sonarqube/extensions
     networks:
-      - microservices-network
+      - onboarding-network
     restart: unless-stopped
 
   # ============================================
@@ -570,4 +572,4 @@ services:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
       - CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
     networks:
-      - microservices-network
+      - onboarding-network
