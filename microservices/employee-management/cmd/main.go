@@ -17,6 +17,7 @@ package main
 //	@description				Type "Bearer " followed by a valid JWT token.
 
 import (
+	"context"
 	"log"
 	"net/http"
 
@@ -28,11 +29,13 @@ import (
 	"employee-management/internal/middleware"
 	"employee-management/internal/repository"
 	"employee-management/internal/service"
+	"employee-management/tracing"
 
 	_ "employee-management/docs" // <-- Swagger docs
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -53,10 +56,28 @@ func main() {
 	service := service.NewEmployeeService(repo, publisher)
 	handler := handlers.NewEmployeeHandler(service)
 
+	// Initialize OpenTelemetry tracing with Zipkin exporter
+	tp, err := tracing.InitializeTracer("employees-service")
+	if err != nil {
+		log.Printf("Warning: could not initialize tracing: %v", err)
+	} else {
+		defer tracing.Shutdown(context.Background(), tp)
+		log.Println("Tracing initialized with Zipkin exporter")
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
 	router.SetTrustedProxies([]string{"127.0.0.1"})
+
+	// Tracing middleware: create a span for every request
+	router.Use(func(c *gin.Context) {
+		tracer := otel.Tracer("employees-service")
+		ctx, span := tracer.Start(c.Request.Context(), c.Request.Method+" "+c.FullPath())
+		defer span.End()
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	})
 
 	router.Use(middleware.Recovery())
 	router.Use(middleware.ErrorHandler())
