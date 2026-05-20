@@ -3654,3 +3654,149 @@ Grafana auto-reloads provisioning files.
 3. **Slack Integration**: Add Slack notifications alongside Discord
 4. **Alert History**: Track and analyze alert patterns
 5. **SLO Tracking**: Monitor SLO compliance using custom metrics
+
+---
+
+## Challenge 7 — Chaos Testing & Documentation
+
+### 1. How to Start the Ecosystem
+
+```bash
+docker-compose up -d
+```
+
+Wait for all services to become healthy (especially databases and RabbitMQ):
+
+```bash
+docker-compose ps
+```
+
+### 2. How to Generate Traffic
+
+Run the traffic generation script:
+
+```bash
+./scripts/generate-traffic.sh
+```
+
+This script will:
+
+1. Authenticate as `admin@onboarding.com` via the auth-service
+2. Create the **ENG** department (if it does not already exist)
+3. Create **10 sample employees** in the Engineering department
+4. Perform **60 GET requests** (list + individual) to populate Prometheus metrics, Zipkin traces, and Loki logs
+
+Expected output:
+
+```
+============================================
+  Observability Traffic Generator
+============================================
+[1/4] Authenticating as admin@onboarding.com ...
+[2/4] Creating department (ENG) ...
+[3/4] Creating sample employees ...
+[4/4] Generating read traffic (30 iterations) ...
+```
+
+### 3. Observability URLs
+
+| Tool | URL | Credentials |
+|------|-----|-------------|
+| Grafana | http://localhost:3000 | admin / admin |
+| Prometheus | http://localhost:9090 | — |
+| Zipkin | http://localhost:9411 | — |
+| Loki | http://localhost:3100 | — |
+
+### 4. What to Verify in Each Tool
+
+#### Grafana Dashboard
+
+- Navigate to **Dashboards** → **General**
+- Open the microservices dashboard
+- Verify HTTP request rates, latency, and error rates are visible after running the traffic script
+
+[Add screenshot — Grafana Dashboard showing service metrics]
+
+#### Prometheus Targets
+
+- Open http://localhost:9090/targets
+- Verify all service endpoints show **UP** status
+
+[Add screenshot — Prometheus Targets page]
+
+#### Zipkin Traces
+
+- Open http://localhost:9411
+- Click **Run Query** (defaults to last 15 minutes)
+- Verify distributed traces from the auth-service and employees-service are listed
+
+[Add screenshot — Zipkin Trace List]
+
+#### Loki Logs
+
+- Open http://localhost:3100/ready (health check) or use Grafana Explore with Loki datasource
+- In Grafana: **Explore** → select **Loki** datasource
+- Run a query: `{service_name=~"/employees-service|/departments-service|/auth-service"}`
+- Verify structured JSON logs appear
+
+[Add screenshot — Loki Logs in Grafana Explore]
+
+#### Discord Alerts
+
+- Join the configured Discord channel
+- Verify that no active alerts are firing after traffic generation (metrics are within normal range)
+
+[Add screenshot — Discord Alert Notification]
+
+### 5. Simulating a Service Failure
+
+To test the alerting system, stop a service and observe the reaction:
+
+```bash
+docker-compose stop departments-service
+```
+
+**Expected behavior:**
+
+| Step | Observation |
+|------|-------------|
+| 1. Service stops | `docker ps` shows `departments-service` as `Exited` |
+| 2. Prometheus (after ~30s) | Target goes **DOWN** at http://localhost:9090/targets |
+| 3. Grafana (after ~1-2 min) | Service panel turns **red**; alert rule `Service Down` transitions to **Alerting** |
+| 4. Discord | Notification received: "CRITICAL — Service departments-service is DOWN" |
+
+To restore:
+
+```bash
+docker-compose start departments-service
+```
+
+Prometheus will mark the target **UP** again, and Grafana will auto-resolve the alert after a few evaluation cycles.
+
+[Add screenshot — Grafana alert panel showing departments-service DOWN]
+
+### 6. Trace Analysis
+
+After running the traffic script, analyze the traces in Zipkin:
+
+**Question: What service responded slower and how was it identified?**
+
+*Open Zipkin at http://localhost:9411, run a query for the last 15 minutes, and sort by duration. Identify the span with the highest latency.*
+
+> **[TODO: Fill in after analysis]**
+> The slowest service was: **________________**
+> Its average response time was: **________________**
+> It was identified by sorting traces by duration in Zipkin and inspecting the span breakdown. The cause of the delay was: **________________**
+
+### 7. Screenshots to Capture Manually
+
+After running the traffic script and chaos tests, capture these screenshots:
+
+| # | Screenshot | Where to find it |
+|---|-----------|------------------|
+| 1 | Grafana Dashboard | http://localhost:3000 → Dashboards → General → microservices dashboard |
+| 2 | Prometheus Targets | http://localhost:9090/targets |
+| 3 | Zipkin Traces | http://localhost:9411 → Run Query |
+| 4 | Loki Logs | Grafana → Explore → Loki datasource → `{service_name=~".*"}` |
+| 5 | Discord Alert Notification | Discord channel after stopping a service |
+| 6 | Grafana Alert Panel | Grafana → Alerting → Alert rules (after `docker-compose stop departments-service`) |
