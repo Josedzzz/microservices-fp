@@ -100,6 +100,82 @@ All documentation is accessible both directly (for development) and through the 
 
 ---
 
+## Health Endpoints
+
+All microservices expose a standardized `/health` endpoint for monitoring and orchestration. These endpoints perform dependency checks (database, message broker) and return HTTP 200 (UP) or HTTP 503 (DOWN/degraded).
+
+### Health Endpoint Details
+
+| Service | Port | Endpoint | Dependencies Checked |
+|---------|------|----------|---------------------|
+| **API Gateway** | 8080 | `GET /health` | None (liveness-only) |
+| **Auth Service** | 8083 | `GET /health` | PostgreSQL, RabbitMQ |
+| **Employees Service** | 8081 | `GET /health` | PostgreSQL, RabbitMQ |
+| **Departments Service** | 8082 | `GET /health` | PostgreSQL |
+| **Notifications Service** | 8084 | `GET /health` | PostgreSQL, RabbitMQ |
+| **Profiles Service** | 8085 | `GET /health` | PostgreSQL, RabbitMQ |
+
+### Health Response Format
+
+All health endpoints return a standardized JSON response:
+
+```json
+{
+  "status": "UP",
+  "service": "service-name",
+  "checks": {
+    "database": "UP",
+    "messageBroker": "UP"
+  }
+}
+```
+
+**Status Values:**
+- `UP`: Service and all dependencies are healthy (HTTP 200)
+- `DOWN`: Service or critical dependency is unavailable (HTTP 503)
+
+**Check Values:**
+- `UP`: Dependency is available and responding
+- `DOWN`: Dependency is unavailable
+- `UNKNOWN`: Dependency check was not performed (graceful fallback; still returns HTTP 200)
+
+### Example: Health Check via cURL
+
+```bash
+# Check employees service health
+curl -i http://localhost:8081/health
+
+# Expected response (HTTP 200 if healthy):
+{
+  "status": "UP",
+  "service": "employee-management",
+  "checks": {
+    "database": "UP",
+    "messageBroker": "UP"
+  }
+}
+
+# Expected response (HTTP 503 if unhealthy):
+{
+  "status": "DOWN",
+  "service": "employee-management",
+  "checks": {
+    "database": "DOWN",
+    "messageBroker": "UP"
+  }
+}
+```
+
+### Docker Healthchecks
+
+Each microservice container includes a Docker healthcheck probe (`docker-compose.yml`) that:
+- Polls `/health` every 10 seconds
+- Allows 5 seconds for a response (timeout)
+- Retries up to 5 times before marking the container unhealthy
+- Uses `wget` to verify HTTP 200/503 status
+
+---
+
 ## Token Instructions & Usage Examples
 
 ### 1. Login (Public)
@@ -157,6 +233,248 @@ curl -X POST http://localhost:8000/auth-service/api/recover-password \
 3. **Onboarding:** Create an employee via `POST http://localhost:8000/employees-service/api/employees`.
 4. **Activation:** Use the token from the logs to set a password via `POST http://localhost:8000/auth-service/api/reset-password`.
 5. **RBAC:** The Gateway enforces: `ADMIN` role required for POST/PUT/DELETE. `USER` role has read-only (GET) access.
+
+---
+
+## Structured Logging & Centralized Log Aggregation
+
+### Overview
+
+All microservices emit **structured JSON logs** compatible with **Loki** log aggregation. This enables:
+- **Centralized log collection** via Promtail
+- **Full-text search** in Grafana
+- **Trace correlation** with OpenTelemetry (traceId in every log)
+- **Easy debugging** across microservices
+- **No local file storage** required (Docker stdout only)
+
+### Why Structured Logging?
+
+1. **Consistency**: All logs follow the same JSON schema across all languages/frameworks
+2. **Searchability**: Loki indexes logs by labels (service, level, traceId) for fast queries
+3. **Trace Correlation**: Every log includes `traceId` from OpenTelemetry span context
+4. **Machine-Readable**: JSON format enables programmatic parsing and alerting
+5. **Production-Ready**: Lightweight, no extra disk I/O, stdout-based logging
+
+### Logging Stack Architecture
+
+```
+[Microservices] --stdout--> [Docker Container] --socket--> [Promtail]
+                                                               |
+                                                               v
+                                                          [Loki (3100)]
+                                                               |
+                                                               v
+                                                        [Grafana (3000)]
+```
+
+### Log Format (JSON Schema)
+
+All services output logs in this format:
+
+```json
+{
+  "timestamp": "2026-05-18T15:30:45.123Z",
+  "level": "INFO",
+  "service": "employee-management",
+  "traceId": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+  "message": "Employee created successfully",
+  "caller": "handlers/employee.go:123"
+}
+```
+
+**Key Fields:**
+- `timestamp`: ISO 8601 format (UTC)
+- `level`: DEBUG, INFO, WARN, ERROR
+- `service`: Service name (e.g., "employee-management")
+- `traceId`: OpenTelemetry trace ID (empty if no active span)
+- `message`: Human-readable log message
+- `caller`: Source code location (file:line)
+
+### Logging Implementation per Service
+
+#### Go Services (api-gateway, auth-service, employee-management)
+
+**Logger**: `go.uber.org/zap` with JSON encoder
+
+**Usage**:
+```go
+import "employee-management/logging"
+
+ctx := context.Background()
+
+// Initialize logger once at startup
+if err := logging.Initialize("employee-management"); err != nil {
+    panic(err)
+}
+defer logging.Sync()
+
+// Log with context (automatically extracts traceId)
+logging.Info(ctx, "Employee created successfully", zap.String("employee_id", "123"))
+logging.Error(ctx, "Failed to save employee", err, zap.String("email", "test@example.com"))
+```
+
+**Example Output**:
+```json
+{"timestamp":"2026-05-18T15:30:45.123Z","level":"INFO","service":"employee-management","traceId":"a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6","message":"Employee created successfully","employee_id":"123","caller":"handlers/employee_handler.go:45"}
+```
+
+#### Python/FastAPI (department-management)
+
+**Logger**: `python-json-logger` with structured logging
+
+**Usage**:
+```python
+from app.logging_config import initialize as init_logger
+
+logger = init_logger("department-management")
+
+logger.info("Department created successfully", extra={"department_id": "456"})
+logger.error(f"Database error: {str(e)}", extra={"error": str(e)})
+```
+
+**Example Output**:
+```json
+{"timestamp":"2026-05-18T15:30:45.123Z","level":"INFO","service":"department-management","traceId":"","message":"Department created successfully","department_id":"456"}
+```
+
+#### Java/Spring Boot (notification-service)
+
+**Logger**: `SLF4J` + `Logstash Logback Encoder` (JSON output)
+
+**Configuration**: `logback-spring.xml` auto-configures JSON encoder
+
+**Usage**:
+```java
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+Logger logger = LoggerFactory.getLogger(NotificationController.class);
+
+logger.info("Notification sent successfully");
+logger.error("Failed to send notification", exception);
+```
+
+**Example Output**:
+```json
+{"@timestamp":"2026-05-18T15:30:45.123Z","@version":"1","level":"INFO","service":"notification-service","message":"Notification sent successfully","caller":"com.microservices.notification.controller.NotificationController"}
+```
+
+#### Node.js/Express (profile-management)
+
+**Logger**: `pino` with HTTP middleware
+
+**Usage**:
+```typescript
+import { getLogger } from "./logging";
+
+const logger = getLogger();
+
+logger.info("Profile created successfully");
+logger.error({ err }, "Failed to create profile");
+```
+
+**Example Output**:
+```json
+{"level":"INFO","time":"2026-05-18T15:30:45.123Z","service":"profile-management","traceId":"a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6","message":"Profile created successfully"}
+```
+
+### Trace ID Correlation
+
+**Automatic Injection**: Every log automatically includes the `traceId` from the current OpenTelemetry span context. This enables correlation between:
+- **Distributed Traces** (in Zipkin) → `trace_id`
+- **Structured Logs** (in Loki) → `traceId` field
+
+**Example Flow**:
+1. Client sends request to API Gateway
+2. Gateway generates OpenTelemetry span (with trace_id = `abc123`)
+3. Request flows through services: Gateway → Auth → Employees → Employee-Management
+4. Each service logs with the **same trace_id = `abc123`**
+5. In Grafana/Loki: Search `traceId=abc123` to see **all logs** for that request across **all services**
+
+### Accessing Logs in Grafana
+
+#### Connect Loki to Grafana
+
+1. Open Grafana: http://localhost:3000 (admin/admin)
+2. Go to **Configuration** → **Data Sources**
+3. Click **Add data source**
+4. Select **Loki**
+5. URL: `http://loki:3100`
+6. Click **Save & Test**
+
+#### Example Queries
+
+**Search by Service**:
+```
+{service="employee-management"}
+```
+
+**Search by Level**:
+```
+{level="ERROR"} | json
+```
+
+**Search by Trace ID**:
+```
+{traceId="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"}
+```
+
+**Combine Filters**:
+```
+{service="auth-service", level="WARN"} | json
+```
+
+**Count Errors in Last Hour**:
+```
+count_over_time({service="notification-service", level="ERROR"}[1h])
+```
+
+### Promtail Configuration
+
+Promtail collects logs from Docker containers via:
+
+1. **Docker Socket**: `/var/run/docker.sock`
+2. **JSON Parsing**: Automatically parses JSON logs
+3. **Label Extraction**: Extracts `service`, `level`, `traceId` from JSON
+4. **Push to Loki**: Sends formatted logs to http://loki:3100
+
+Configuration file: `observability/promtail/promtail-config.yml`
+
+### Docker Integration
+
+- **No Changes Required**: Logs automatically go to `stdout`
+- **Docker Desktop**: Logs appear in `docker logs <container>`
+- **Promtail**: Automatically discovers containers via Docker API
+- **No Disk Space**: All logs streamed to Loki (no local files)
+
+### Performance Considerations
+
+- **Async Logging**: Java service uses `AsyncAppender` for non-blocking I/O
+- **Batching**: Promtail batches logs before sending to Loki
+- **Compression**: Loki compresses logs for storage efficiency
+- **Sampling**: Can configure log sampling for high-volume services (if needed)
+
+### Best Practices
+
+1. **Always Include Context**: Use `extra` / `fields` to add business context
+   ```go
+   logging.Info(ctx, "User login", zap.String("user_id", userID), zap.String("ip", clientIP))
+   ```
+
+2. **Log Errors Completely**: Include both message and error object
+   ```go
+   logging.Error(ctx, "Database query failed", err)
+   ```
+
+3. **Use Appropriate Levels**:
+   - `DEBUG`: Development-only, verbose details
+   - `INFO`: Important business events (login, payment, creation)
+   - `WARN`: Unexpected but recoverable (retry, fallback)
+   - `ERROR`: Failures that need investigation
+
+4. **Never Log Secrets**: Passwords, API keys, tokens (use <redacted>)
+
+---
 
 ## Continuous Integration & Deployment
 
@@ -2226,85 +2544,218 @@ Grafana View:
 
 ### 7. Grafana Dashboards
 
-#### Planned Dashboard Panels
+#### Microservices Observability Dashboard (Implemented)
 
-**Main Observability Dashboard** will include the following panels:
+**Dashboard Configuration:**
+- **Location**: `observability/grafana/provisioning/dashboards/microservices-observability.json`
+- **Auto-Provisioning**: Automatically loaded by Grafana on startup via `dashboard-provider.yml`
+- **Datasources**: Prometheus (metrics), Loki (logs)
+- **Refresh Rate**: 30 seconds
+- **Time Range**: Last 6 hours
 
-**Service Health Panel**:
-
-- Displays health status of each microservice (UP/DOWN)
-- Gauge visualization showing service availability
-- Data source: HTTP requests to `/health` endpoint or Prometheus scrape success
-- Color coding: Green (UP), Red (DOWN), Yellow (DEGRADED)
-
-**Request Rate Panel**:
-
-- Line chart showing requests per second over time
-- Separate lines for each service
-- PromQL query: `rate(http_requests_total[1m])`
-- Y-axis: Requests per second (RPS)
-- X-axis: Time (last 1 hour)
-
-**Latency Panel**:
-
-- Shows p50, p95, p99 percentiles of request latency
-- Data source: `http_request_duration_seconds` histogram buckets
-- PromQL query: `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[1m]))`
-- Visualization: Graph with multiple lines per percentile
-
-**HTTP Errors Panel**:
-
-- Stacked bar chart of error counts by status code
-- Includes 4xx and 5xx errors
-- PromQL query: `sum by (status) (rate(http_errors_total[1m]))`
-- Color per status code (red for 5xx, yellow for 4xx)
-
-**Resource Utilization Panel**:
-
-- CPU and memory usage per service
-- Dual Y-axis: CPU (%), Memory (MB)
-- PromQL queries:
-  - CPU: `rate(process_cpu_seconds_total[1m]) * 100`
-  - Memory: `process_resident_memory_bytes / 1024 / 1024`
-
-**Recent Logs Panel**:
-
-- Shows latest 100 structured JSON logs
-- Data source: Loki
-- LogQL query: `{service_name!=""}`
-- Includes: timestamp, level, service, message, traceId
-
-**Database Connection Pool Panel**:
-
-- Database connections in use vs available
-- Gauge per service
-- Indicates potential connection exhaustion
-
-#### PromQL Usage Examples
-
-**Query: Requests per second by service**:
-
-```promql
-sum by (job) (rate(http_requests_total[1m]))
+**Access Grafana:**
+```
+http://localhost:3000
+Username: admin
+Password: (check docker-compose.yml for GF_SECURITY_ADMIN_PASSWORD)
 ```
 
-**Query: Error rate (5xx errors)**:
+#### Dashboard Panels Implemented
+
+**1. Service Health Status**
+- **Type**: Stat Panel with color coding
+- **Services Monitored**: All 6 microservices
+  - API Gateway
+  - Auth Service
+  - Employee Management
+  - Department Management
+  - Notification Service
+  - Profile Management
+- **Metric**: `up{job=~"api-gateway|auth-service|employee-management|department-management|notification-service|profile-management"}`
+- **Visual Indicators**:
+  - Green: Service UP (value = 1)
+  - Red: Service DOWN (value = 0)
+- **Updates**: Real-time
+
+**2. Request Rate Per Service**
+- **Type**: Time Series (Line Chart)
+- **Metric**: `sum(rate(http_request_duration_seconds_count[1m])) by (route)`
+- **Y-axis**: Requests/sec (RPS)
+- **X-axis**: Time (auto-adjusting window)
+- **Shows**: Real-time request throughput per service
+- **Legend**: Service name (from route label)
+
+**3. Average Request Latency**
+- **Type**: Time Series (Line Chart)
+- **Metric**: `(rate(http_request_duration_seconds_sum[1m]) / rate(http_request_duration_seconds_count[1m])) * 1000`
+- **Y-axis**: Milliseconds
+- **Calculates**: Mean latency from histogram sum/count
+- **Shows**: Per-service average response time over time
+
+**4. HTTP Error Rates (4xx & 5xx)**
+- **Type**: Time Series (Line Chart)
+- **Metrics**:
+  - 4xx Errors: `sum(rate(http_request_duration_seconds_count{status_code=~"4.."}[1m])) by (status_code)`
+  - 5xx Errors: `sum(rate(http_request_duration_seconds_count{status_code=~"5.."}[1m])) by (status_code)`
+- **Colors**: Yellow (4xx), Red (5xx)
+- **Shows**: Error request rates in requests/sec
+- **Alerts**: Watch for sustained error rates
+
+**5. Request Distribution by Status Code**
+- **Type**: Time Series (Stacked Bar Chart)
+- **Metric**: `sum(increase(http_request_duration_seconds_count[5m])) by (status_code)`
+- **Shows**: Total request counts per status code over 5-minute intervals
+- **Legend**: Status code (2xx, 3xx, 4xx, 5xx)
+
+**6. Request Latency Percentiles (p50, p95, p99)**
+- **Type**: Time Series (Line Chart)
+- **Metrics**:
+  - p50: `histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[1m])) * 1000`
+  - p95: `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[1m])) * 1000`
+  - p99: `histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[1m])) * 1000`
+- **Y-axis**: Milliseconds
+- **Shows**: Latency distribution (median, 95th percentile, 99th percentile)
+- **Usage**: Identify tail latency issues
+
+#### PromQL Queries Reference
+
+**Basic Queries:**
 
 ```promql
-sum(rate(http_errors_total{status=~"5.."}[1m])) / sum(rate(http_requests_total[1m])) * 100
+# Service health status
+up{job=~"api-gateway|auth-service|..."}
+
+# Request rate per service
+sum(rate(http_request_duration_seconds_count[1m])) by (route)
+
+# Average latency (in milliseconds)
+(rate(http_request_duration_seconds_sum[1m]) / rate(http_request_duration_seconds_count[1m])) * 1000
+
+# 4xx error rate
+sum(rate(http_request_duration_seconds_count{status_code=~"4.."}[1m]))
+
+# 5xx error rate
+sum(rate(http_request_duration_seconds_count{status_code=~"5.."}[1m]))
 ```
 
-**Query: P99 latency**:
+**Advanced Queries:**
 
 ```promql
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+# Error rate as percentage
+sum(rate(http_request_duration_seconds_count{status_code=~"[45].."}[1m])) / 
+  sum(rate(http_request_duration_seconds_count[1m])) * 100
+
+# P99 latency by service
+histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) * 1000
+
+# Success rate per service
+sum(rate(http_request_duration_seconds_count{status_code=~"2.."}[1m])) by (route) /
+  sum(rate(http_request_duration_seconds_count[1m])) by (route) * 100
+
+# Request size metrics (profile-management only)
+rate(http_request_size_bytes_sum[1m]) / rate(http_request_size_bytes_count[1m])
+
+# Response size metrics (profile-management only)
+rate(http_response_size_bytes_sum[1m]) / rate(http_response_size_bytes_count[1m])
 ```
 
-**Query: Service availability**:
+#### Metric Names by Service
 
-```promql
-(1 - (increase(up{job="employees-service"}[5m] == 0)) / increase(up{job="employees-service"}[5m])) * 100
+**Go Services** (api-gateway, auth-service, employee-management):
+- `http_request_duration_seconds` (histogram)
+  - Labels: method, route, status_code
+- `up` (gauge)
+  - Labels: job, instance
+
+**Python Service** (department-management):
+- `http_request_duration_seconds` (histogram)
+- `http_requests_total` (counter)
+  - Labels: method, endpoint, status_code
+- `http_request_size_bytes` (histogram)
+- `http_response_size_bytes` (histogram)
+
+**Java Service** (notification-service):
+- `http_server_requests_seconds` (timer/histogram)
+  - Labels: method, status, uri, outcome
+- JVM metrics: `jvm_memory_used_bytes`, `jvm_threads_live`, etc.
+- Process metrics: `process_cpu_seconds_total`, `process_resident_memory_bytes`
+
+**Node.js Service** (profile-management):
+- `http_request_duration_seconds` (histogram)
+  - Labels: method, route, status_code
+- `http_requests_total` (counter)
+- `http_request_size_bytes` (histogram)
+- `http_response_size_bytes` (histogram)
+- Node.js runtime: `process_resident_memory_bytes`, `process_cpu_seconds_total`
+
+#### Dashboard Provisioning
+
+**Automatic Loading:**
+
+When Docker Compose starts, Grafana automatically:
+1. Reads `observability/grafana/provisioning/dashboards/dashboard-provider.yml`
+2. Loads dashboard JSON from `observability/grafana/provisioning/dashboards/microservices-observability.json`
+3. Creates the dashboard in Grafana with:
+   - Title: "Microservices Observability Dashboard"
+   - Folder: "Microservices"
+   - UID: "microservices-observability" (allows cross-dashboard linking)
+
+**Files Involved:**
 ```
+observability/grafana/
+├── provisioning/
+│   ├── dashboards/
+│   │   ├── dashboard-provider.yml       # Dashboard provisioning config
+│   │   └── microservices-observability.json  # Dashboard definition (6 panels)
+│   └── datasources/
+│       └── datasource.yml               # Prometheus + Loki datasources
+```
+
+#### Verification Steps
+
+After `docker-compose up --build`:
+
+1. **Check Grafana is running**:
+   ```bash
+   curl http://localhost:3000/api/health
+   # Expected: {"status":"ok"}
+   ```
+
+2. **Verify dashboard auto-loaded**:
+   ```bash
+   curl -s http://localhost:3000/api/dashboards/uid/microservices-observability \
+     -H "Authorization: Bearer <api-token>" | jq '.dashboard.title'
+   # Expected: "Microservices Observability Dashboard"
+   ```
+
+3. **Check datasources are connected**:
+   ```bash
+   curl http://localhost:3000/api/datasources -u admin:admin | jq '.[] | {name, type, url}'
+   # Expected: Prometheus and Loki datasources listed
+   ```
+
+4. **View dashboard in browser**:
+   - Open http://localhost:3000
+   - Navigate to Microservices folder
+   - Click "Microservices Observability Dashboard"
+   - All panels should show green "UP" for healthy services
+
+#### Troubleshooting Dashboard Issues
+
+**Dashboard doesn't appear:**
+- Check file permissions: `ls -la observability/grafana/provisioning/dashboards/`
+- Verify JSON syntax: `python -m json.tool microservices-observability.json`
+- Check Grafana logs: `docker logs <grafana-container> | grep -i dashboard`
+
+**Panels show "No data":**
+- Verify Prometheus is scraping metrics: `curl http://localhost:9090/api/v1/query?query=up`
+- Check query syntax in panel editor
+- Verify metric names match actual metrics (use `/metrics` endpoint to verify)
+
+**Slow dashboard queries:**
+- Reduce time range (default: last 6 hours, can change to 1 hour)
+- Add query rate limiting in Prometheus config
+- Use recording rules for complex queries (advanced optimization)
 
 ---
 
@@ -2730,10 +3181,476 @@ process_resident_memory_bytes 52428800
 
 ---
 
+## Challenge 7B – Distributed Tracing with OpenTelemetry & Zipkin
+
+### Distributed Tracing Overview
+
+Distributed tracing provides end-to-end visibility into how requests flow through microservices. Unlike metrics (point-in-time aggregates) and logs (individual events), traces show the complete causal chain of operations across service boundaries—essential for understanding performance bottlenecks, debugging failures, and optimizing service interactions.
+
+**Key Tracing Concepts:**
+- **Trace**: A complete request journey across all services
+- **Span**: A single operation within a service (e.g., HTTP request, database query)
+- **Trace Context**: W3C standard headers (`traceparent`, `tracestate`) that propagate trace IDs across services
+- **Baggage**: Additional metadata (e.g., user ID, tenant) attached to a trace for cross-service correlation
+
+### Tracing Architecture
+
+This project implements **OpenTelemetry (OTel)** for automatic instrumentation across all 6 microservices, with **Zipkin** as the backend for span storage and visualization:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  Microservices (All 6 services)             │
+│  • Go (api-gateway, auth-service, employee-management)     │
+│  • Python/FastAPI (department-management)                  │
+│  • Java/Spring Boot (notification-service)                 │
+│  • Node.js/Express (profile-management)                    │
+└──────────────┬──────────────────────────────────────────────┘
+               │ (Traces with W3C Context)
+               ↓
+┌─────────────────────────────────────────────────────────────┐
+│         OpenTelemetry SDK (per-service)                     │
+│  • Automatic instrumentation (HTTP, database)              │
+│  • Context propagation (tracecontext, baggage)             │
+│  • Span processors & exporters                             │
+└──────────────┬──────────────────────────────────────────────┘
+               │ (Spans as JSON)
+               ↓
+┌─────────────────────────────────────────────────────────────┐
+│         Zipkin (Collector & UI)                             │
+│  Port 9411 - In-memory trace storage & visualization       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Details
+
+#### 1. Go Services (api-gateway, auth-service, employee-management)
+
+**Dependencies:**
+- `go.opentelemetry.io/otel` v1.27.0 - Core OTel API
+- `go.opentelemetry.io/otel/exporters/zipkin` v1.27.0 - Zipkin exporter
+- `go.opentelemetry.io/otel/sdk` v1.27.0 - SDK (trace provider)
+- `go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin` v0.52.0 - Gin middleware
+- `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` v0.52.0 - HTTP client instrumentation
+
+**Instrumentation:**
+- **Inbound Requests**: Gin middleware (`otelgin.Middleware()`) automatically creates spans for incoming HTTP requests
+- **Outbound HTTP Calls**: `otelhttp.NewTransport()` wraps HTTP clients to trace outbound calls (e.g., employee-management → departments-service)
+- **Trace Context Propagation**: W3C Trace Context headers automatically propagated via middleware and transport
+
+**Code Structure:**
+```
+microservices/{service}/
+├── tracing/
+│   └── tracing.go          # Shared: InitializeTracer(), Shutdown()
+└── main.go (or cmd/main.go)
+    ├── tp, err := tracing.InitializeTracer("service-name")
+    ├── defer tracing.Shutdown(ctx, tp)
+    ├── router.Use(otelgin.Middleware("service-name"))
+    └── [Optional] Wrap HTTP client with otelhttp
+```
+
+#### 2. Python/FastAPI (department-management)
+
+**Dependencies:**
+- `opentelemetry-api` v1.27.0
+- `opentelemetry-sdk` v1.27.0
+- `opentelemetry-exporter-zipkin` v1.27.0
+- `opentelemetry-instrumentation-fastapi` v0.48b0
+- `opentelemetry-instrumentation-requests` v0.48b0
+
+**Instrumentation:**
+- **Inbound Requests**: `FastAPIInstrumentor.instrument_app()` decorates FastAPI app with tracing middleware
+- **Outbound HTTP Calls**: `RequestsInstrumentor()` automatically instruments `requests` library
+- **Automatic Span Creation**: All endpoints automatically get request/response spans
+
+**Code Structure:**
+```
+microservices/department-management/
+├── app/
+│   ├── tracing.py       # initialize_tracer(), instrument_app(), shutdown_tracer()
+│   └── main.py
+│       ├── tp = initialize_tracer("department-management")
+│       ├── instrument_app(app)
+│       └── defer shutdown_tracer(tp)
+```
+
+#### 3. Java/Spring Boot (notification-service)
+
+**Dependencies:**
+- `opentelemetry-spring-boot-starter` v1.34.1 (handles all auto-instrumentation)
+
+**Instrumentation:**
+- **Zero-Code**: Spring Boot starter auto-instruments HTTP, JDBC, RabbitMQ, etc.
+- **Configuration**: Set via `application.properties`:
+  ```properties
+  management.tracing.sampling.probability=1.0
+  otel.exporter.zipkin.endpoint=http://zipkin:9411/api/v2/spans
+  otel.traces.exporter=zipkin
+  otel.service.name=notification-service
+  ```
+
+#### 4. Node.js/Express (profile-management)
+
+**Dependencies:**
+- `@opentelemetry/sdk-node` v0.52.1
+- `@opentelemetry/auto-instrumentations-node` v0.45.1
+- `@opentelemetry/exporter-zipkin` v1.27.0
+
+**Instrumentation:**
+- **Early Initialization**: Tracing must be initialized **before any other imports** (to intercept module loading)
+- **Automatic Instrumentation**: `getNodeAutoInstrumentations()` patches Express, HTTP, database, etc.
+
+**Code Structure:**
+```
+microservices/profile-management/
+├── src/
+│   ├── tracing.ts       # initializeTracing()
+│   └── main.ts
+│       ├── import { initializeTracing } from "./tracing"
+│       ├── initializeTracing("profile-management")  // FIRST line
+│       ├── import express from "express"            // After tracing!
+│       └── ...rest of app
+```
+
+### Trace Context Propagation (W3C Standard)
+
+All services automatically propagate trace context using W3C Trace Context headers:
+
+**Request Flow Example:**
+```
+[Client] 
+  ↓ (no trace context)
+  
+[API Gateway] 
+  Creates new trace: traceparent: 00-abc123...
+  ↓
+  
+[Employees Service] 
+  Receives traceparent, adds span
+  Makes HTTP call to departments-service
+  Propagates traceparent header
+  ↓
+  
+[Departments Service] 
+  Receives traceparent, adds span
+  Span has same trace ID as employees service
+  ↓
+  
+[Zipkin UI] 
+  Shows single trace with multiple spans:
+    • api-gateway span
+    • employees-service span
+    • departments-service span
+```
+
+**Environment Variables (all services):**
+```bash
+OTEL_EXPORTER_ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
+OTEL_SERVICE_NAME=service-name                        # e.g., employee-management
+OTEL_PROPAGATORS=tracecontext,baggage                # W3C standard + baggage
+```
+
+### Accessing Zipkin UI
+
+**Local Development:**
+```
+http://localhost:9411
+```
+
+**Via Docker Compose:**
+```bash
+docker-compose up
+# Then visit http://localhost:9411
+```
+
+**What You'll See:**
+1. **Service List**: All 6 services that have sent traces
+2. **Trace Search**: Filter by service, duration, error status
+3. **Trace Detail**: Click any trace to see:
+   - Full trace timeline (all spans across services)
+   - Service call chain (which service called which)
+   - Span duration breakdown
+   - HTTP headers, request/response body (if captured)
+   - Error details (if operation failed)
+
+### Example: Tracing an Employee Creation Request
+
+When creating an employee via the API Gateway:
+
+```bash
+curl -X POST http://localhost:8080/employees-service/api/employees \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "John", "email": "john@example.com", "department_id": "dept-1"}'
+```
+
+**Trace in Zipkin shows:**
+1. **api-gateway span** (8080)
+   - Route: POST /employees-service/api/employees
+   - Duration: 150ms
+   - Status: 201
+
+2. **employees-service span** (8081) - child of api-gateway
+   - HTTP handler + business logic
+   - Duration: 140ms
+   - Makes outbound HTTP call:
+
+3. **employees-service HTTP client span** - child of employees-service
+   - GET http://departments-service:8082/departments-service/api/departments/dept-1
+   - Duration: 45ms
+   - Status: 200
+
+4. **departments-service span** (8082) - child of HTTP client span
+   - HTTP handler + database query
+   - Duration: 40ms
+   - Status: 200
+
+5. **RabbitMQ publish span** (async, may not appear in same trace)
+   - Event: employee.created
+   - Status: success
+
+**Use Cases:**
+- **Performance Analysis**: See that departments-service call takes 45ms - investigate why
+- **Error Debugging**: If departments-service returns 404, trace shows exact request/response
+- **Dependency Tracking**: Visualize which services depend on which
+- **SLA Monitoring**: Track end-to-end latency for all traces
+
+### Sampling & Performance
+
+**Current Configuration:**
+- **Sampling Rate**: 100% (all traces captured)
+  - Set via `OTEL_PROPAGATORS=tracecontext,baggage` + default sampler
+  - For production, reduce to 1-10% to avoid overhead
+
+**Performance Impact:**
+- Minimal: ~2-5% latency overhead per request
+- Spans collected in batches (BatchSpanProcessor)
+- In-memory Zipkin storage (for dev/test; use persistent storage in prod)
+
+### Troubleshooting Tracing
+
+**No traces appearing in Zipkin:**
+1. Check Zipkin is running: `docker ps | grep zipkin`
+2. Verify environment variables: `docker inspect <service> | grep OTEL`
+3. Check service logs: `docker logs <service> | grep -i "tracing\|otel"`
+4. Ensure services can reach Zipkin on `http://zipkin:9411` (Docker network DNS)
+
+**Traces incomplete (missing spans):**
+- Ensure all service dependencies are instrumenting (Go, Python, Java, Node.js)
+- Check that context headers are being propagated
+- Verify W3C Trace Context headers in network tab
+
+**High latency due to tracing:**
+- Reduce sampling rate: `OTEL_SAMPLER=parentbased_traceidratio` + lower probability
+- Use async span export (already configured in all services)
+
+---
+
 ### Next Steps (Future Enhancements)
 
 1. **Custom Metrics**: Add domain-specific metrics per service (e.g., `employees_total`, `notifications_sent_total`)
-2. **OpenTelemetry**: Add distributed tracing (deferred to future phase)
-3. **Grafana Dashboards**: Create visualizations for metrics (deferred to future phase)
-4. **Alerting Rules**: Configure Prometheus alert rules for SLA violations (deferred to future phase)
-5. **Production Hardening**: Add authentication to metrics endpoints, metric cardinality limits
+2. **Grafana Dashboards**: Create visualizations for metrics and traces (deferred to future phase)
+3. **Alerting Rules**: Configure Prometheus alert rules for SLA violations (deferred to future phase)
+4. **RabbitMQ Trace Propagation**: Extend tracing to event messages (deferred to future phase)
+5. **Production Hardening**: Persistent Zipkin storage, sampling optimization, authentication (deferred to future phase)
+
+---
+
+## Challenge 6 – Proactive Alerts (Grafana Alerting + Discord)
+
+### Overview
+
+This project implements **proactive alerting** using Grafana Alerting with Prometheus metrics. Alert rules are automatically provisioned on startup and send notifications to Discord when issues are detected.
+
+**Why Grafana Alerting?**
+- Native Prometheus integration (no separate alerting server)
+- Web UI for alert management and testing
+- Multi-channel notifications (Discord, Email, Slack, etc.)
+- Automatic provisioning via YAML/JSON
+- Built-in alert history and silencing
+- No additional infrastructure required
+
+**Why Discord?**
+- Easy to set up (webhook-based)
+- Real-time notifications to team channels
+- Rich formatting for alert details
+- Free and accessible
+- Integrates with team workflows
+
+### Alert Rules Implemented
+
+#### 1. Service Down (CRITICAL)
+**What it detects:** Microservice is unreachable for >1 minute  
+**Condition:** `up{job="<service>"} == 0` for 1 minute  
+**Severity:** CRITICAL  
+**Why:** Service unavailability directly impacts business  
+**Action:** Immediate investigation required
+
+**PromQL Query:**
+```promql
+up{job=~"api-gateway|auth-service|employees-service|departments-service|notifications-service|profiles-service"} == 0
+```
+Threshold: `< 1` (value is 0 when service is down)
+
+#### 2. High Error Rate - 5xx (WARNING)
+**What it detects:** Server errors >10% for 2+ minutes  
+**Condition:** Error rate exceeds 10% over 5-minute window  
+**Severity:** WARNING  
+**Why:** Sustained 5xx errors indicate application failures  
+**Action:** Check application logs and health status
+
+**PromQL Query:**
+```promql
+sum by(job, route) (rate(http_request_duration_seconds_count{status_code=~"5.*"}[5m])) / clamp_min(sum by(job, route) (rate(http_request_duration_seconds_count[5m])), 1)
+```
+Threshold: `> 0.1` (configured in Grafana alert rule expression)
+
+#### 3. High Request Latency (WARNING)
+**What it detects:** p95 latency exceeds 500ms for 3+ minutes  
+**Condition:** 95th percentile response time > 500ms  
+**Severity:** WARNING  
+**Why:** Performance degradation affects user experience  
+**Action:** Consider scaling or investigating bottlenecks
+
+**PromQL Query:**
+```promql
+histogram_quantile(0.95, sum by(le, job, route) (rate(http_request_duration_seconds_bucket[5m])))
+```
+Threshold: `> 0.5` (configured in Grafana alert rule expression)
+
+### Alert Provisioning
+
+Alerts are automatically provisioned when Grafana starts. No manual UI configuration needed.
+
+**Provisioning Files:**
+- `observability/grafana/provisioning/alerting/alert-rules.yml` - Alert rules definitions
+- `observability/grafana/provisioning/alerting/contact-points.yml` - Discord contact point
+- `observability/grafana/entrypoint.sh` - Injects Discord webhook URL from env var
+- `docker-compose.yml` - Discord webhook URL via environment variable
+
+**How Provisioning Works:**
+1. Docker starts Grafana container
+2. Custom entrypoint (`entrypoint.sh`) runs, injecting `$DISCORD_WEBHOOK_URL` into `contact-points.yml`
+3. Grafana reads `provisioning/alerting/alert-rules.yml`
+4. Grafana reads `provisioning/alerting/contact-points.yml`
+5. Alert rules are registered with correct PromQL queries
+6. Discord contact point is created with the webhook URL
+7. Notification policy routes alerts to Discord
+8. Grafana UI shows alerts as ACTIVE
+
+### Discord Webhook Configuration
+
+#### Step 1: Create Discord Server & Channel
+
+Create a Discord server if you don't have one, then:
+1. Create a text channel named `#alerts` (or your preference)
+
+#### Step 2: Create Webhook
+
+1. In Discord: **Channel Settings** → **Integrations** → **Webhooks**
+2. Click **New Webhook**
+3. Name it `Grafana Alerts`
+4. Copy the **Webhook URL**
+
+Example URL format:
+```
+https://discordapp.com/api/webhooks/123456789/abcdefghijklmnop
+```
+
+#### Step 3: Set Environment Variable
+
+**Option A: Via .env file (Docker Compose)**
+
+Create `.env` file in repository root:
+```bash
+DISCORD_WEBHOOK_URL=https://discordapp.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN
+```
+
+**Option B: Via environment at runtime**
+
+```bash
+export DISCORD_WEBHOOK_URL="https://discordapp.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+docker-compose up
+```
+
+#### Step 4: Restart Grafana
+
+```bash
+docker-compose restart grafana
+```
+
+Or stop and restart the entire stack:
+```bash
+docker-compose down
+docker-compose up
+```
+
+### Accessing Alerts in Grafana
+
+1. Open **Grafana** → `http://localhost:3000` (admin/admin)
+2. Navigate to **Alerting** → **Alert Rules** (left sidebar)
+3. See all provisioned alerts with their status
+
+### Testing Alerts
+
+#### Test 1: Service Down Alert
+
+Stop a microservice container:
+```bash
+docker stop employees-service
+```
+
+Within 1 minute, "Service Down" alert enters FIRING state and Discord is notified.
+
+Resume service:
+```bash
+docker start employees-service
+```
+
+#### Test 2: High Error Rate Alert
+
+Generate 5xx errors:
+```bash
+for i in 1 2 3 4 5 6 7 8 9 10; do 
+  curl -s http://localhost:8080/api/employees/invalid || true
+done
+```
+
+Within 2 minutes, "High Error Rate" alert enters FIRING state.
+
+### Troubleshooting Alerts
+
+**Alerts not appearing in Grafana UI:**
+```bash
+docker ps | grep grafana
+docker logs grafana | grep -i alert
+```
+
+**Discord notification not received:**
+1. Verify webhook URL has no typos
+2. Check Grafana logs: `docker logs grafana | grep -i discord`
+3. Test webhook: `curl -X POST $DISCORD_WEBHOOK_URL -H "Content-Type: application/json" -d '{"content":"Test"}'`
+
+**Alert rule shows error:**
+1. Verify PromQL query is valid in Prometheus UI
+2. Check metric names match services: `http://localhost:9090/api/v1/query?query=up`
+3. Verify datasource UID in alert rules
+
+### Customizing Alerts
+
+Edit: `observability/grafana/provisioning/alerting/alert-rules.yml`
+
+Then restart:
+```bash
+docker-compose restart grafana
+```
+
+Grafana auto-reloads provisioning files.
+
+### Next Steps
+
+1. **Custom Alerts**: Add domain-specific metrics (employee creation rate, profile updates)
+2. **Alert Grouping**: Configure smart grouping for related alerts
+3. **Slack Integration**: Add Slack notifications alongside Discord
+4. **Alert History**: Track and analyze alert patterns
+5. **SLO Tracking**: Monitor SLO compliance using custom metrics

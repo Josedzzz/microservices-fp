@@ -1,0 +1,15 @@
+# Grafana Dashboard Provisioning Configuration
+# Automatically loads dashboard JSON files on Grafana startup
+# Reference: https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#dashboard-provisioning
+
+apiVersion: 1
+
+providers:
+  - name: 'Microservices Dashboards'
+    orgId: 1
+    folder: 'Microservices'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
