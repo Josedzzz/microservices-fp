@@ -76,6 +76,13 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
         
+        <!-- Structured Logging (Logstash JSON encoder) -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>7.4</version>
+        </dependency>
+
         <!-- JJWT for token validation -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

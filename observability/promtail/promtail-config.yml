@@ -61,13 +61,3 @@ scrape_configs:
           traceId:
           spanId:
 
-  # ============================================
-  # SYSLOG (Optional)
-  # ============================================
-  - job_name: syslog
-    syslog:
-      listen_address: 0.0.0.0:514
-      transport: tcp
-    relabel_configs:
-      - source_labels: ['__syslog_message_hostname']
-        target_label: 'hostname'
