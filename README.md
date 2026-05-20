@@ -3730,7 +3730,7 @@ Expected output:
 - Click **Run Query** (defaults to last 15 minutes)
 - Verify distributed traces from the auth-service and employees-service are listed
 
-> **Note:** Zipkin is empty because distributed tracing was not wired into the services at startup. No spans are exported, so no data appears. This is a pre-existing gap in the project.
+![Zipkin Traces](images/zipkin.png)
 
 #### Loki Logs
 
@@ -3796,7 +3796,7 @@ After running the traffic script and chaos tests, capture these screenshots:
 |---|-----------|--------|------------------|
 | 1 | Grafana Dashboard | Added | `images/dashboard_grafana.png` |
 | 2 | Prometheus Targets | Added | `images/prometheus_dashboard.png` |
-| 3 | Zipkin Traces | Not available (tracing not wired up) | http://localhost:9411 → Run Query |
+| 3 | Zipkin Traces | Added | `images/zipkin.png` |
 | 4 | Loki Logs | Added | `images/loki_logs.png` |
 | 5 | Discord Alert Notification | Added | `images/discord_message.png` |
 | 6 | Grafana Alert Panel | Added | `images/service_down.png` |
