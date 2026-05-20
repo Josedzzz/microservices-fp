@@ -3715,14 +3715,14 @@ Expected output:
 - Open the microservices dashboard
 - Verify HTTP request rates, latency, and error rates are visible after running the traffic script
 
-[Add screenshot — Grafana Dashboard showing service metrics]
+![Grafana Dashboard](images/dashboard_grafana.png)
 
 #### Prometheus Targets
 
 - Open http://localhost:9090/targets
 - Verify all service endpoints show **UP** status
 
-[Add screenshot — Prometheus Targets page]
+![Prometheus Dashboard](images/prometheus_dashboard.png)
 
 #### Zipkin Traces
 
@@ -3730,7 +3730,7 @@ Expected output:
 - Click **Run Query** (defaults to last 15 minutes)
 - Verify distributed traces from the auth-service and employees-service are listed
 
-[Add screenshot — Zipkin Trace List]
+> **Note:** Zipkin is empty because distributed tracing was not wired into the services at startup. No spans are exported, so no data appears. This is a pre-existing gap in the project.
 
 #### Loki Logs
 
@@ -3739,14 +3739,14 @@ Expected output:
 - Run a query: `{service_name=~"/employees-service|/departments-service|/auth-service"}`
 - Verify structured JSON logs appear
 
-[Add screenshot — Loki Logs in Grafana Explore]
+![Loki Logs in Grafana Explore](images/loki_logs.png)
 
 #### Discord Alerts
 
 - Join the configured Discord channel
 - Verify that no active alerts are firing after traffic generation (metrics are within normal range)
 
-[Add screenshot — Discord Alert Notification]
+![Discord Alert Notification](images/discord_message.png)
 
 ### 5. Simulating a Service Failure
 
@@ -3773,7 +3773,7 @@ docker-compose start departments-service
 
 Prometheus will mark the target **UP** again, and Grafana will auto-resolve the alert after a few evaluation cycles.
 
-[Add screenshot — Grafana alert panel showing departments-service DOWN]
+![Service Down Alert](images/service_down.png)
 
 ### 6. Trace Analysis
 
@@ -3792,11 +3792,11 @@ After running the traffic script, analyze the traces in Zipkin:
 
 After running the traffic script and chaos tests, capture these screenshots:
 
-| # | Screenshot | Where to find it |
-|---|-----------|------------------|
-| 1 | Grafana Dashboard | http://localhost:3000 → Dashboards → General → microservices dashboard |
-| 2 | Prometheus Targets | http://localhost:9090/targets |
-| 3 | Zipkin Traces | http://localhost:9411 → Run Query |
-| 4 | Loki Logs | Grafana → Explore → Loki datasource → `{service_name=~".*"}` |
-| 5 | Discord Alert Notification | Discord channel after stopping a service |
-| 6 | Grafana Alert Panel | Grafana → Alerting → Alert rules (after `docker-compose stop departments-service`) |
+| # | Screenshot | Status | Where to find it |
+|---|-----------|--------|------------------|
+| 1 | Grafana Dashboard | Added | `images/dashboard_grafana.png` |
+| 2 | Prometheus Targets | Added | `images/prometheus_dashboard.png` |
+| 3 | Zipkin Traces | Not available (tracing not wired up) | http://localhost:9411 → Run Query |
+| 4 | Loki Logs | Added | `images/loki_logs.png` |
+| 5 | Discord Alert Notification | Added | `images/discord_message.png` |
+| 6 | Grafana Alert Panel | Added | `images/service_down.png` |
