@@ -3698,7 +3698,21 @@ Expected output:
 [4/4] Generating read traffic (30 iterations) ...
 ```
 
-### 3. Observability URLs
+### 3. Architecture
+
+![Observability Architecture](images/arch.png)
+
+The observability stack collects telemetry from all microservices:
+
+| Component | Role |
+|-----------|------|
+| **Prometheus** | Scrapes HTTP metrics (`/metrics`) from each service |
+| **Loki** | Aggregates structured JSON logs shipped by Promtail |
+| **Zipkin** | Receives distributed traces via OpenTelemetry Zipkin exporter |
+| **Grafana** | Visualizes metrics, logs, and traces in unified dashboards |
+| **Discord** | Receives alert notifications from Grafana Alerting |
+
+### 4. Observability URLs
 
 | Tool | URL | Credentials |
 |------|-----|-------------|
@@ -3707,7 +3721,7 @@ Expected output:
 | Zipkin | http://localhost:9411 | — |
 | Loki | http://localhost:3100 | — |
 
-### 4. What to Verify in Each Tool
+### 5. What to Verify in Each Tool
 
 #### Grafana Dashboard
 
@@ -3748,7 +3762,7 @@ Expected output:
 
 ![Discord Alert Notification](images/discord_message.png)
 
-### 5. Simulating a Service Failure
+### 6. Simulating a Service Failure
 
 To test the alerting system, stop a service and observe the reaction:
 
@@ -3775,7 +3789,7 @@ Prometheus will mark the target **UP** again, and Grafana will auto-resolve the 
 
 ![Service Down Alert](images/service_down.png)
 
-### 6. Trace Analysis
+### 7. Trace Analysis
 
 After running the traffic script, analyze the traces in Zipkin:
 
@@ -3788,7 +3802,7 @@ After running the traffic script, analyze the traces in Zipkin:
 > Its average response time was: **________________**
 > It was identified by sorting traces by duration in Zipkin and inspecting the span breakdown. The cause of the delay was: **________________**
 
-### 7. Screenshots to Capture Manually
+### 8. Screenshots to Capture Manually
 
 After running the traffic script and chaos tests, capture these screenshots:
 
