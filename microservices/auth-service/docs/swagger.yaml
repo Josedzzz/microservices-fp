@@ -128,4 +128,20 @@ paths:
       summary: Reset password
       tags:
       - Auth
-swagger: "2.0"
+  /health:
+    get:
+      description: Returns the service health status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is healthy
+          schema:
+            additionalProperties:
+              type: object
+            type: object
+      security: []
+      summary: Health check
+      tags:
+      - System
+  swagger: "2.0"

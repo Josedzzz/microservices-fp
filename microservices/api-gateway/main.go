@@ -74,7 +74,7 @@ func main() {
 
 	// Initialize Service Proxies
 	services := []*ProxyConfig{
-		NewProxyConfig(getEnv("AUTH_SERVICE_URL", "http://auth-service:8083"), "/auth-service", []string{"/api/login", "/api/recover-password", "/api/reset-password", "/swagger", "/api/swagger.yaml"}),
+		NewProxyConfig(getEnv("AUTH_SERVICE_URL", "http://auth-service:8083"), "/auth-service", []string{"/api/login", "/api/recover-password", "/api/reset-password", "/api/health", "/swagger", "/api/swagger.yaml"}),
 		NewProxyConfig(getEnv("EMPLOYEES_SERVICE_URL", "http://employees-service:8081"), "/employees-service", []string{"/swagger", "/api/swagger.yaml", "/api/health"}),
 		NewProxyConfig(getEnv("DEPARTMENTS_SERVICE_URL", "http://departments-service:8082"), "/departments-service", []string{"/docs", "/openapi.json", "/api/"}),
 		NewProxyConfig(getEnv("NOTIFICATIONS_SERVICE_URL", "http://notifications-service:8084"), "/notifications-service", []string{"/swagger-ui", "/v3/api-docs", "/swagger-ui.html"}),

@@ -3,6 +3,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -124,5 +125,21 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "password updated successfully",
+	})
+}
+
+// HealthCheck handles GET /health
+//
+//	@Summary		Health check
+//	@Description	Returns the service health status
+//	@Tags			System
+//	@Produce		json
+//	@Success		200	{object}	map[string]interface{}	"Service is healthy"
+//	@Router			/health [get]
+func HealthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "UP",
+		"service":   "auth-service",
+		"timestamp": time.Now().UTC(),
 	})
 }
